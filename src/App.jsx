@@ -46,6 +46,15 @@ const QUALS = {
   "Gastroenterologist":"MBBS, MD, DM (Gastroenterology)","Endocrinologist":"MBBS, MD, DM (Endocrinology)","Pulmonologist":"MBBS, MD (Pulmonology)"
 };
 
+function AayuRahiLogoMark({ size = 30 }){
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M26 6H38V24H56V36H38V54H26V36H8V24H26V6Z" fill="#fff" />
+      <path d="M12 40C20 40 27 37 32 30C37 23 44 20 52 20" stroke="#0D9C88" strokeWidth="6" strokeLinecap="round" />
+      <path d="M43 14L54 20L48 31" stroke="#0D9C88" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 const COLORS = {
   bg: "#F6F9FB", surface: "#FFFFFF", primary: "#0D9C88", primaryDark: "#0A7A6A", primarySoft: "#E4F7F3",
   secondary: "#1A6FC4", secondarySoft: "#EAF1FF", text: "#0F1B2D", muted: "#67788F", border: "#E5EBF2",
@@ -559,10 +568,9 @@ function RoleSelect({ ctx }){
     <div className="mq-fade-in" style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",padding:28,background:`linear-gradient(180deg, ${COLORS.primarySoft} 0%, ${COLORS.bg} 55%)`}}>
       <div style={{textAlign:"center",marginBottom:36}}>
         <div style={{width:64,height:64,borderRadius:18,background:COLORS.primary,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",boxShadow:`0 10px 24px ${COLORS.primarySoft}`}}>
-          <Stethoscope size={30} color="#fff" />
+          <AayuRahiLogoMark size={34} />
         </div>
         <div className="mq-display" style={{fontSize:26,fontWeight:800}}>AayuRahi</div>
-        <div style={{color:COLORS.muted,fontSize:14,marginTop:4}}>Aapka swasth jeevan, hamare saath — Purnea</div>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
         <RoleCard icon={User} title="I'm a Patient" subtitle="Search doctors, book appointments & track your queue" onClick={()=>setMode("patient")} />
