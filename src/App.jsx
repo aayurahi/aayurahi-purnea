@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { supabase } from "./supabaseClient";
+import Auth from "./Auth";
 import {
   Search, MapPin, Star, Clock, Calendar, User, Bell, Home as HomeIcon, Users,
   Stethoscope, CheckCircle2, XCircle, ChevronRight, ChevronLeft, Filter, Heart,
@@ -46,7 +48,7 @@ const QUALS = {
   "Gastroenterologist":"MBBS, MD, DM (Gastroenterology)","Endocrinologist":"MBBS, MD, DM (Endocrinology)","Pulmonologist":"MBBS, MD (Pulmonology)"
 };
 
-function AayuRahiLogoMark({ size = 30 }){
+export function AayuRahiLogoMark({ size = 30 }){
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M26 6H38V24H56V36H38V54H26V36H8V24H26V6Z" fill="#fff" />
@@ -55,7 +57,7 @@ function AayuRahiLogoMark({ size = 30 }){
     </svg>
   );
 }
-const COLORS = {
+export const COLORS = {
   bg: "#F6F9FB", surface: "#FFFFFF", primary: "#0D9C88", primaryDark: "#0A7A6A", primarySoft: "#E4F7F3",
   secondary: "#1A6FC4", secondarySoft: "#EAF1FF", text: "#0F1B2D", muted: "#67788F", border: "#E5EBF2",
   success: "#1AA152", warning: "#D68A0C", danger: "#DC3B3B", dangerSoft: "#FDECEC", warnSoft: "#FDF3E0", successSoft: "#E7F7EE"
@@ -500,11 +502,30 @@ export default function App(){
       setNotifications(notifsData||[]);
       setSpecialties(specsData||SPECIALTIES.map(s=>s.name));
 
-      const sess = await storageGet("aayurahi_purnea_session_v1", false);
-      if (sess) setSession(sess);
+      // Real Supabase session (replaces the old fake demo-login session)
+      const { data: { session: supaSession } } = await supabase.auth.getSession();
+      if (supaSession) {
+        await loadRealSession(supaSession.user.id);
+      }
       setBooted(true);
     })();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, supaSession) => {
+      if (!supaSession) setSession(null);
+    });
+    return () => authListener?.subscription?.unsubscribe();
   }, []);
+
+  const loadRealSession = async (userId) => {
+    const { data: profile } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    if (!profile) return;
+    if (profile.role === "doctor") {
+      const { data: doc } = await supabase.from("doctors").select("verified").eq("profile_id", userId).maybeSingle();
+      setSession({ role: "doctor", id: profile.id, verified: !!doc?.verified, full_name: profile.full_name });
+    } else {
+      setSession({ role: profile.role, id: profile.id, full_name: profile.full_name });
+    }
+  };
 
   // persistence helpers
   const persist = useCallback(async (key, setter, updater) => {
@@ -523,12 +544,12 @@ export default function App(){
   const updateSpecialties = (updater) => persist(K.specialties, setSpecialties, updater);
 
   const login = async (sess) => {
+    // Called by the real Auth screen once Supabase confirms who the user is.
     setSession(sess);
-    await storageSet("aayurahi_purnea_session_v1", sess, false);
   };
   const logout = async () => {
+    await supabase.auth.signOut();
     setSession(null);
-    await storageSet("aayurahi_purnea_session_v1", null, false);
   };
 
   const ctx = {
@@ -545,9 +566,16 @@ export default function App(){
     <div className="mq-root" style={{maxWidth:520, margin:"0 auto", position:"relative", minHeight:"100vh", boxShadow:"0 0 40px rgba(15,27,45,0.06)"}}>
       <GlobalStyle />
       <Toast toast={toast} />
-      {!session && <RoleSelect ctx={ctx} />}
+      {!session && <Auth onAuthed={login} />}
       {session?.role === "patient" && <PatientApp ctx={ctx} />}
-      {session?.role === "doctor" && <DoctorApp ctx={ctx} />}
+      {session?.role === "doctor" && session.verified && <DoctorApp ctx={ctx} />}
+      {session?.role === "doctor" && !session.verified && (
+        <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",padding:28,textAlign:"center"}}>
+          <div style={{fontWeight:800,fontSize:17,marginBottom:8}}>Your doctor profile is pending verification</div>
+          <div style={{color:COLORS.muted,fontSize:13.5,marginBottom:20}}>An admin needs to approve your application before your dashboard unlocks.</div>
+          <button onClick={logout} className="mq-btn" style={{background:COLORS.primary,color:"#fff",border:"none",borderRadius:12,padding:"10px 20px",fontWeight:700}}>Log out</button>
+        </div>
+      )}
       {session?.role === "admin" && <AdminApp ctx={ctx} />}
     </div>
   );
@@ -770,6 +798,14 @@ function TopBar({ title, onBack, right }){
 ============================================================================ */
 function PatientApp({ ctx }){
   const patient = ctx.patients.find(p=>p.id===ctx.session.id);
+  useEffect(() => {
+    if (!patient) {
+      ctx.updatePatients(prev => [...prev, {
+        id: ctx.session.id, name: ctx.session.full_name || "Patient",
+        phone: "", email: "", dob: "", gender: "", favorites: [], createdAt: new Date().toISOString()
+      }]);
+    }
+  }, []);
   const [tab, setTab] = useState("home");
   const [view, setView] = useState({ name:"home" }); // stack-lite navigation
   const [search, setSearch] = useState("");
@@ -1617,6 +1653,25 @@ function PatientProfile({ ctx, patient, onOpenDoctor }){
 ============================================================================ */
 function DoctorApp({ ctx }){
   const doctor = ctx.doctors.find(d=>d.id===ctx.session.id);
+  useEffect(() => {
+    if (!doctor) {
+      (async () => {
+        const { data: row } = await supabase.from("doctors").select("*").eq("profile_id", ctx.session.id).maybeSingle();
+        ctx.updateDoctors(prev => [...prev, {
+          id: ctx.session.id,
+          name: ctx.session.full_name || "Doctor",
+          specialization: row?.specialty || "General Physician",
+          qualification: "", experience: 0, regNo: "",
+          photo: `https://i.pravatar.cc/300?img=12`,
+          clinicName: row?.clinic_name || "", address: row?.clinic_address || "",
+          area: "", city: "",
+          fee: row?.fee || 0, rating: 0, reviewCount: 0, about: "",
+          startTime: "09:00", endTime: "17:00", breakStart: "13:00", breakEnd: "13:45",
+          status: "approved", slotDuration: 20, workingDays: [1,2,3,4,5,6], consultTypes: ["In-Clinic"]
+        }]);
+      })();
+    }
+  }, []);
   const [tab, setTab] = useState("dashboard");
   const [view, setView] = useState({ name:"dashboard" });
 
@@ -2252,8 +2307,13 @@ function AdminDoctors({ ctx }){
   if (q.trim()) list = list.filter(d=>d.name.toLowerCase().includes(q.toLowerCase()) || d.specialization.toLowerCase().includes(q.toLowerCase()));
   list = [...list].sort((a,b)=> b.createdAt.localeCompare(a.createdAt));
 
-  const setDocStatus = (doc, status) => {
+  const setDocStatus = async (doc, status) => {
     ctx.updateDoctors(prev => prev.map(d=>d.id===doc.id?{...d,status}:d));
+    // Also flip the real "verified" flag in Supabase for real (non-demo) doctor applications.
+    // Harmlessly affects 0 rows for the sample/demo doctors, since they have no real database row.
+    try {
+      await supabase.from("doctors").update({ verified: status === "approved" }).eq("profile_id", doc.id);
+    } catch (e) { /* demo doctor, no real row — ignore */ }
     ctx.showToast(`${doc.name} ${status}`);
     setSelected(null);
   };
