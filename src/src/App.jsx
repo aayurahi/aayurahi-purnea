@@ -509,7 +509,7 @@ export default function App(){
       let notifsData = await storageGet(K.notifications, true);
       let specsData = await storageGet(K.specialties, true);
 
-      if (!doctorsData || doctorsData.length < 10 || doctorsData[0]?.isDemo === undefined) {
+      if (!doctorsData || doctorsData.length < 10) {
         doctorsData = generateDoctors(15, { demo: true });
         patientsData = generateSamplePatients(70);
         apptsData = generateSampleAppointments(doctorsData, patientsData);
