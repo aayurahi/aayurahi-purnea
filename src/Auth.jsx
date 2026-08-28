@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { User, Stethoscope, ShieldCheck, Mail, Phone, ChevronRight, ArrowLeft, Loader2, CheckCircle2 } from "lucide-react";
+import { User, Stethoscope, ShieldCheck, Mail, Phone, ChevronRight, ArrowLeft, Loader2, CheckCircle2, Upload } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { COLORS, AayuRahiLogoMark } from "./App";
 
@@ -228,15 +228,37 @@ function DoctorApply({ profile, onDone, onSkip }) {
   const [clinicName, setClinicName] = useState("");
   const [clinicAddress, setClinicAddress] = useState("");
   const [fee, setFee] = useState("");
+  const [docs, setDocs] = useState({ medical_registration: null, id_proof: null, degree_certificate: null, clinic_registration: null });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const setDoc = (key, file) => setDocs(prev => ({ ...prev, [key]: file }));
+
   const apply = async () => {
-    setError(""); setLoading(true);
+    setError("");
+    if (!docs.medical_registration || !docs.id_proof || !docs.degree_certificate) {
+      setError("Please upload the 3 required documents before submitting.");
+      return;
+    }
+    setLoading(true);
     try {
+      const uploadedPaths = {};
+      for (const key of ["medical_registration","id_proof","degree_certificate","clinic_registration"]) {
+        const file = docs[key];
+        if (!file) continue;
+        const ext = file.name.split(".").pop();
+        const path = `${profile.id}/${key}.${ext}`;
+        const { error: eUp } = await supabase.storage.from("doctor-documents").upload(path, file, { upsert: true });
+        if (eUp) throw eUp;
+        uploadedPaths[key] = path;
+      }
       const { error: e1 } = await supabase.from("doctors").insert({
         profile_id: profile.id, specialty, clinic_name: clinicName, clinic_address: clinicAddress,
-        fee: Number(fee) || 0, verified: false
+        fee: Number(fee) || 0, verified: false,
+        doc_medical_registration: uploadedPaths.medical_registration,
+        doc_id_proof: uploadedPaths.id_proof,
+        doc_degree_certificate: uploadedPaths.degree_certificate,
+        doc_clinic_registration: uploadedPaths.clinic_registration || null,
       });
       if (e1) throw e1;
       const { error: e2 } = await supabase.from("profiles").update({ role: "doctor" }).eq("id", profile.id);
@@ -249,6 +271,19 @@ function DoctorApply({ profile, onDone, onSkip }) {
     }
   };
 
+  const DocUpload = ({ docKey, label, required }) => (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.muted, marginBottom: 6 }}>
+        {label} {required ? <span style={{color:COLORS.danger}}>*</span> : <span style={{fontWeight:400}}>(optional)</span>}
+      </div>
+      <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 12, border: `1.5px dashed ${COLORS.border}`, cursor: "pointer", fontSize: 13, color: docs[docKey] ? COLORS.text : COLORS.muted }}>
+        <Upload size={17} color={COLORS.primary} />
+        {docs[docKey] ? docs[docKey].name : "Tap to upload a photo or PDF"}
+        <input type="file" accept="image/*,.pdf" style={{ display: "none" }} onChange={e => setDoc(docKey, e.target.files?.[0] || null)} />
+      </label>
+    </div>
+  );
+
   return (
     <Shell title="Welcome!" onBack={onSkip}>
       <div style={{ background: "#fff", border: `1.5px solid ${COLORS.border}`, borderRadius: 16, padding: 16, marginBottom: 18 }}>
@@ -259,6 +294,10 @@ function DoctorApply({ profile, onDone, onSkip }) {
       <TextField label="Clinic Name" value={clinicName} onChange={e => setClinicName(e.target.value)} placeholder="Your clinic's name" />
       <TextField label="Clinic Address" value={clinicAddress} onChange={e => setClinicAddress(e.target.value)} placeholder="Purnea, Bihar" />
       <TextField label="Consultation Fee (₹)" type="number" value={fee} onChange={e => setFee(e.target.value)} placeholder="500" />
+      <DocUpload docKey="medical_registration" label="Medical Registration Certificate" required />
+      <DocUpload docKey="id_proof" label="Government ID Proof" required />
+      <DocUpload docKey="degree_certificate" label="Degree Certificate" required />
+      <DocUpload docKey="clinic_registration" label="Clinic Registration" required={false} />
       <ErrorMsg msg={error} />
       <PrimaryButton onClick={apply} disabled={loading || !specialty || !clinicName}>
         {loading ? <Loader2 size={16} style={{animation:"spin 1s linear infinite"}} /> : "Submit Application"}

@@ -9,7 +9,7 @@ import {
   RefreshCw, FileText, MoreHorizontal, X, Check, ChevronDown, Video, Building2,
   LayoutGrid, ClipboardList, ListChecks, UserCog, Tags, Hospital, MessageSquare,
   BarChart3, CalendarClock, CalendarX2, CalendarCheck2, ShieldAlert, Loader2,
-  Upload, ThumbsUp, BellRing, ChevronUp, Sparkles
+  Upload, ThumbsUp, BellRing, ChevronUp, Sparkles, Camera, Send, Image as ImageIcon, MessageCircle
 } from "lucide-react";
 
 /* ============================================================================
@@ -181,18 +181,41 @@ function mapRealDoctorRow(row){
     id: row.profile_id, // matches the logged-in user's real session id
     name: row.profiles?.full_name || "Doctor",
     specialization: row.specialty || "General Physician",
-    qualification: "", experience: 0, regNo: "",
-    photo: `https://i.pravatar.cc/300?u=${row.profile_id}`,
-    clinicName: row.clinic_name || "", address: row.clinic_address || "", area: "", city: CITY,
-    fee: row.fee || 0, rating: 0, reviewCount: 0, about: "",
-    startTime: "09:00", endTime: "17:00", breakStart: "13:00", breakEnd: "13:45",
-    slotDuration: 20, workingDays: [1,2,3,4,5,6],
-    blockedDates: [],
+    qualification: row.qualification || "", experience: row.experience || 0, regNo: "",
+    photo: row.profiles?.avatar_url || `https://i.pravatar.cc/300?u=${row.profile_id}`,
+    clinicName: row.clinic_name || "", address: row.clinic_address || "", area: row.area || "", city: CITY,
+    fee: row.fee || 0, rating: 0, reviewCount: 0, about: row.about || "",
+    startTime: row.start_time || "09:00", endTime: row.end_time || "17:00",
+    breakStart: row.break_start || "13:00", breakEnd: row.break_end || "13:45",
+    slotDuration: row.slot_duration || 20, workingDays: row.working_days || [1,2,3,4,5,6],
+    blockedDates: row.blocked_dates || [],
+    clinicLat: row.clinic_lat || null, clinicLng: row.clinic_lng || null,
     status: row.verified ? "approved" : "pending",
-    consultTypes: ["In-Clinic"],
+    consultTypes: row.consult_types || ["In-Clinic"],
     currentTokenByDate: {},
     createdAt: row.created_at || new Date().toISOString(),
     verificationDocs: [],
+    docs: {
+      medical_registration: row.doc_medical_registration || null,
+      id_proof: row.doc_id_proof || null,
+      degree_certificate: row.doc_degree_certificate || null,
+      clinic_registration: row.doc_clinic_registration || null,
+    },
+    isDemo: false,
+  };
+}
+
+// Turns a real Supabase 'appointments' row into the same shape the rest of
+// the app already expects (matches the local demo appointment shape).
+function mapRealAppointmentRow(row){
+  return {
+    id: row.id, doctorId: row.doctor_id, patientId: row.patient_id,
+    date: row.appt_date, time: row.appt_time, type: row.consult_type || "In-Clinic",
+    status: row.status || "pending", tokenNumber: row.token_number || 1,
+    fee: row.fee || 0, reason: row.reason || "General consultation",
+    patientName: row.patient_name || "", patientPhone: row.patient_phone || "",
+    patientAge: row.patient_age || "", patientGender: row.patient_gender || "",
+    createdAt: row.created_at || new Date().toISOString(), rescheduled: !!row.rescheduled,
     isDemo: false,
   };
 }
@@ -253,7 +276,7 @@ function generateSampleAppointments(doctors, patients){
       type: pick(doc.consultTypes), status, tokenNumber: rnd(1,20),
       fee: doc.fee, reason: pick(["Fever & cold","Routine checkup","Follow-up visit","Skin rash","Back pain","General consultation","Child vaccination","Headache"]),
       patientName: pat.name, patientPhone: pat.phone, patientAge: rnd(2,75), patientGender: pat.gender,
-      createdAt: new Date(past.getTime()-86400000).toISOString(), rescheduled:false
+      createdAt: new Date(past.getTime()-86400000).toISOString(), rescheduled:false, isDemo:true
     });
   }
   // today & upcoming (mixed statuses) - concentrate some on first 10 approved doctors for a lively demo
@@ -272,7 +295,7 @@ function generateSampleAppointments(doctors, patients){
         type: pick(doc.consultTypes), status, tokenNumber: tokenCounter++,
         fee: doc.fee, reason: pick(["Fever & cold","Routine checkup","Follow-up visit","Skin rash","Back pain","General consultation"]),
         patientName: pat.name, patientPhone: pat.phone, patientAge: rnd(2,75), patientGender: pat.gender,
-        createdAt: new Date(Date.now()-rnd(1,5)*3600000).toISOString(), rescheduled:false
+        createdAt: new Date(Date.now()-rnd(1,5)*3600000).toISOString(), rescheduled:false, isDemo:true
       });
     }
     doc.currentTokenByDate[todayStr] = Math.max(1, Math.floor(numToday*0.4));
@@ -342,7 +365,7 @@ function GlobalStyle(){
   );
 }
 
-function Avatar({ src, name, size=44 }){
+export function Avatar({ src, name, size=44 }){
   const [err,setErr] = useState(false);
   if (!src || err){
     const initials = (name||"D").split(" ").filter(w=>w.length&&w[0]!=='.').slice(0,2).map(w=>w[0]).join("").toUpperCase();
@@ -351,7 +374,7 @@ function Avatar({ src, name, size=44 }){
   return <img src={src} onError={()=>setErr(true)} alt={name} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:`2px solid ${COLORS.surface}`}} />;
 }
 
-function Badge({ children, tone="default" }){
+export function Badge({ children, tone="default" }){
   const tones = {
     default:{bg:"#F1F5F9",fg:COLORS.muted}, primary:{bg:COLORS.primarySoft,fg:COLORS.primary},
     success:{bg:COLORS.successSoft,fg:COLORS.success}, warning:{bg:COLORS.warnSoft,fg:COLORS.warning},
@@ -365,7 +388,7 @@ function STATUS_TONE(s){
   return { pending:"warning", confirmed:"primary", arrived:"secondary", completed:"success", cancelled:"danger", rejected:"danger", rescheduled:"warning" }[s] || "default";
 }
 
-function Btn({ children, onClick, variant="primary", size="md", full=false, icon:Icon, disabled=false, style={} }){
+export function Btn({ children, onClick, variant="primary", size="md", full=false, icon:Icon, disabled=false, style={} }){
   const sizes = { sm:{ padding:"8px 12px", fontSize:13 }, md:{ padding:"11px 16px", fontSize:14.5 }, lg:{ padding:"14px 20px", fontSize:15.5 } };
   const variants = {
     primary:{ background: disabled? "#B9C7E8": COLORS.primary, color:"#fff" },
@@ -386,7 +409,7 @@ function Btn({ children, onClick, variant="primary", size="md", full=false, icon
   );
 }
 
-function Card({ children, style={}, onClick, hover=false }){
+export function Card({ children, style={}, onClick, hover=false }){
   return (
     <div onClick={onClick} className={hover?"mq-card-hover":""} style={{
       background:COLORS.surface, borderRadius:18, border:`1px solid ${COLORS.border}`,
@@ -509,7 +532,7 @@ export default function App(){
       let notifsData = await storageGet(K.notifications, true);
       let specsData = await storageGet(K.specialties, true);
 
-      if (!doctorsData || doctorsData.length < 10 || doctorsData[0]?.isDemo === undefined) {
+      if (!doctorsData || doctorsData.length < 10 || doctorsData[0]?.isDemo === undefined || (apptsData && apptsData.length>0 && apptsData[0]?.isDemo === undefined)) {
         doctorsData = generateDoctors(15, { demo: true });
         patientsData = generateSamplePatients(70);
         apptsData = generateSampleAppointments(doctorsData, patientsData);
@@ -536,12 +559,14 @@ export default function App(){
         await loadRealSession(supaSession.user.id);
       }
       await refreshRealDoctors();
+      await refreshRealAppointments();
       setBooted(true);
     })();
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, supaSession) => {
       if (!supaSession) setSession(null);
       refreshRealDoctors();
+      refreshRealAppointments();
     });
     return () => authListener?.subscription?.unsubscribe();
   }, []);
@@ -551,9 +576,18 @@ export default function App(){
   // sees only their own listing, and an admin sees everyone — including pending
   // applications). Demo/preview doctors are kept separate and untouched.
   const refreshRealDoctors = async () => {
-    const { data: rows } = await supabase.from("doctors").select("*, profiles(full_name)");
+    const { data: rows } = await supabase.from("doctors").select("*, profiles(full_name, avatar_url)");
     const realMapped = (rows || []).map(mapRealDoctorRow);
     setDoctors(prev => [...prev.filter(d => d.isDemo), ...realMapped]);
+  };
+
+  // Fetches real appointments from Supabase — RLS scopes this automatically:
+  // a patient sees only their own bookings, a doctor sees only appointments
+  // made with them, and an admin sees everything.
+  const refreshRealAppointments = async () => {
+    const { data: rows } = await supabase.from("appointments").select("*");
+    const realMapped = (rows || []).map(mapRealAppointmentRow);
+    setAppointments(prev => [...prev.filter(a => a.isDemo), ...realMapped]);
   };
 
   const loadRealSession = async (userId) => {
@@ -561,9 +595,9 @@ export default function App(){
     if (!profile) return;
     if (profile.role === "doctor") {
       const { data: doc } = await supabase.from("doctors").select("verified").eq("profile_id", userId).maybeSingle();
-      setSession({ role: "doctor", id: profile.id, verified: !!doc?.verified, full_name: profile.full_name });
+      setSession({ role: "doctor", id: profile.id, verified: !!doc?.verified, full_name: profile.full_name, avatar_url: profile.avatar_url });
     } else {
-      setSession({ role: profile.role, id: profile.id, full_name: profile.full_name });
+      setSession({ role: profile.role, id: profile.id, full_name: profile.full_name, avatar_url: profile.avatar_url });
     }
   };
 
@@ -592,10 +626,68 @@ export default function App(){
     setSession(null);
   };
 
+  // Uploads a profile picture to Supabase Storage, saves it as the permanent
+  // profile photo (so it follows the person to any device), and updates the
+  // local patient/doctor record immediately so the UI reflects it right away.
+  const uploadAvatar = async (file) => {
+    if (!session) return;
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `${session.id}/avatar.${ext}`;
+      const { error: eUp } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+      if (eUp) throw eUp;
+      const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
+      const url = `${pub.publicUrl}?t=${Date.now()}`; // cache-bust so the new photo shows immediately
+      await supabase.from("profiles").update({ avatar_url: url }).eq("id", session.id);
+      if (session.role === "patient") {
+        updatePatients(prev => prev.map(p => p.id === session.id ? { ...p, photo: url } : p));
+      } else if (session.role === "doctor") {
+        updateDoctors(prev => prev.map(d => d.id === session.id ? { ...d, photo: url } : d));
+      }
+      showToast("Profile photo updated");
+    } catch (e) {
+      showToast("Could not upload photo", "danger");
+    }
+  };
+
+  // Updates an appointment locally right away, and — for real (non-demo)
+  // appointments — also writes the same change to Supabase, so it's a genuine
+  // shared booking rather than only living in this browser.
+  const syncAppt = async (apptId, patch) => {
+    updateAppointments(prev => prev.map(a => a.id===apptId ? {...a, ...patch} : a));
+    const target = appointments.find(a=>a.id===apptId);
+    if (target && !target.isDemo) {
+      const dbPatch = {};
+      if ('status' in patch) dbPatch.status = patch.status;
+      if ('date' in patch) dbPatch.appt_date = patch.date;
+      if ('time' in patch) dbPatch.appt_time = patch.time;
+      if ('rescheduled' in patch) dbPatch.rescheduled = patch.rescheduled;
+      try { await supabase.from("appointments").update(dbPatch).eq("id", apptId); } catch(e){ /* local change stands; will retry next sync */ }
+    }
+  };
+
+  // Unread chat message count — lives at the top level so it can be refreshed
+  // from anywhere (e.g. right after a conversation marks its messages as read).
+  const [unreadChats, setUnreadChats] = useState(0);
+  const refreshUnreadChats = async () => {
+    if (!session) { setUnreadChats(0); return; }
+    const { count } = await supabase.from("messages").select("id", { count:"exact", head:true }).eq("read", false).neq("sender_id", session.id);
+    setUnreadChats(count || 0);
+  };
+  useEffect(() => {
+    if (!session) return;
+    refreshUnreadChats();
+    const channel = supabase.channel("unread-chats-count")
+      .on("postgres_changes", { event:"INSERT", schema:"public", table:"messages" }, refreshUnreadChats)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [session?.id]);
+
   const ctx = {
     doctors, patients, appointments, reviews, notifications, specialties,
     updateDoctors, updatePatients, updateAppointments, updateReviews, updateNotifications, updateSpecialties,
-    showToast, session, login, logout, refreshRealDoctors
+    showToast, session, login, logout, refreshRealDoctors, uploadAvatar, syncAppt, refreshRealAppointments,
+    unreadChats, refreshUnreadChats
   };
 
   if (!booted) {
@@ -842,6 +934,7 @@ function PatientApp({ ctx }){
     if (!patient) {
       ctx.updatePatients(prev => [...prev, {
         id: ctx.session.id, name: ctx.session.full_name || "Patient",
+        photo: ctx.session.avatar_url || "",
         phone: "", email: "", dob: "", gender: "", favorites: [], createdAt: new Date().toISOString()
       }]);
     }
@@ -860,6 +953,7 @@ function PatientApp({ ctx }){
     { key:"home", label:"Home", icon:HomeIcon },
     { key:"search", label:"Search", icon:Search },
     { key:"appointments", label:"Appointments", icon:CalendarClock },
+    { key:"messages", label:"Chats", icon:MessageCircle, badge: ctx.unreadChats },
     { key:"notifications", label:"Alerts", icon:Bell, badge: unread },
     { key:"profile", label:"Profile", icon:User },
   ];
@@ -870,9 +964,11 @@ function PatientApp({ ctx }){
   if (view.name === "doctorProfile") content = <DoctorProfileView ctx={ctx} doctor={ctx.doctors.find(d=>d.id===view.doctorId)} patient={patient} onBack={()=>setView({name:tab})} onBook={(doc)=>setView({name:"booking", doctorId:doc.id})} />;
   else if (view.name === "booking") content = <BookingFlow ctx={ctx} doctor={ctx.doctors.find(d=>d.id===view.doctorId)} patient={patient} onDone={()=>{ setTab("appointments"); setView({name:"appointments"}); }} onBack={()=>setView({name:"doctorProfile", doctorId:view.doctorId})} />;
   else if (view.name === "appointmentDetail") content = <AppointmentDetail ctx={ctx} appt={ctx.appointments.find(a=>a.id===view.apptId)} patient={patient} onBack={()=>setView({name:"appointments"})} />;
+  else if (view.name === "chatConversation") content = <ChatConversation ctx={ctx} chatId={view.chatId} onBack={()=>setView({name:"messages"})} />;
   else if (tab === "home") content = <PatientHome ctx={ctx} patient={patient} onOpenDoctor={(d)=>setView({name:"doctorProfile", doctorId:d.id})} goSearch={(q)=>{ setSearch(q||""); goTab("search"); }} />;
   else if (tab === "search") content = <PatientSearch ctx={ctx} initialQuery={search} onOpenDoctor={(d)=>setView({name:"doctorProfile", doctorId:d.id})} />;
   else if (tab === "appointments") content = <PatientAppointments ctx={ctx} patient={patient} onOpen={(a)=>setView({name:"appointmentDetail", apptId:a.id})} onBookAgain={(doc)=>setView({name:"doctorProfile", doctorId:doc.id})} />;
+  else if (tab === "messages") content = <PatientMessages ctx={ctx} patient={patient} onOpenChat={(chatId)=>setView({name:"chatConversation", chatId})} />;
   else if (tab === "notifications") content = <PatientNotifications ctx={ctx} patient={patient} />;
   else if (tab === "profile") content = <PatientProfile ctx={ctx} patient={patient} onOpenDoctor={(d)=>setView({name:"doctorProfile", doctorId:d.id})} />;
 
@@ -1134,11 +1230,25 @@ function DoctorProfileView({ ctx, doctor, patient, onBack, onBook }){
           </div>
           <div style={{display:"flex",gap:10,marginBottom:4}}>
             <MapPin size={16} color={COLORS.muted} style={{marginTop:1,flexShrink:0}} />
-            <div style={{fontSize:12.5,color:COLORS.muted}}>{doctor.area}, {doctor.city} — map preview unavailable in demo</div>
+            <div style={{fontSize:12.5,color:COLORS.muted}}>{doctor.area}, {doctor.city}</div>
           </div>
-          <div style={{borderRadius:12,height:110,background:`linear-gradient(135deg,${COLORS.primarySoft},${COLORS.secondarySoft})`,marginTop:8,display:"flex",alignItems:"center",justifyContent:"center",color:COLORS.primary,gap:6}}>
-            <MapPin size={18}/> <span style={{fontWeight:700,fontSize:12.5}}>{doctor.area} map view</span>
+          <div style={{borderRadius:12,overflow:"hidden",marginTop:8,border:`1px solid ${COLORS.border}`}}>
+            <iframe
+              title="Clinic location"
+              width="100%" height="140" style={{display:"block",border:0}}
+              loading="lazy"
+              src={doctor.clinicLat && doctor.clinicLng
+                ? `https://www.google.com/maps?q=${doctor.clinicLat},${doctor.clinicLng}&output=embed`
+                : `https://www.google.com/maps?q=${encodeURIComponent(`${doctor.clinicName}, ${doctor.address}, ${doctor.area}, ${doctor.city}`)}&output=embed`}
+            />
           </div>
+          <Btn full variant="outline" icon={MapPin} style={{marginTop:10}} onClick={()=>window.open(
+            doctor.clinicLat && doctor.clinicLng
+              ? `https://www.google.com/maps/dir/?api=1&destination=${doctor.clinicLat},${doctor.clinicLng}`
+              : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${doctor.clinicName}, ${doctor.address}, ${doctor.area}, ${doctor.city}`)}`,
+            "_blank")}>
+            Get Directions
+          </Btn>
         </Card>
 
         <Card style={{marginBottom:14}}>
@@ -1222,26 +1332,54 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
 
   const set = (k,v)=>setForm(f=>({...f,[k]:v}));
 
-  const confirmBooking = () => {
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const confirmBooking = async () => {
     if (!form.name.trim() || form.phone.trim().length<10 || !form.age){
       ctx.showToast("Please complete all required fields","danger"); return;
     }
     const existingForDate = ctx.appointments.filter(a=>a.doctorId===doctor.id && a.date===date && !["cancelled","rejected"].includes(a.status));
     const tokenNumber = existingForDate.length + 1;
-    const appt = {
-      id: uid("apt"), doctorId: doctor.id, patientId: patient.id, date, time, type,
+    const base = {
+      doctorId: doctor.id, patientId: patient.id, date, time, type,
       status:"pending", tokenNumber, fee: doctor.fee, reason: form.reason || "General consultation",
       patientName: form.name, patientPhone: form.phone, patientAge: form.age, patientGender: form.gender,
       createdAt: new Date().toISOString(), rescheduled:false
     };
-    ctx.updateAppointments(prev => [...prev, appt]);
-    ctx.updateNotifications(prev => [...prev, {
-      id: uid("notif"), userId: patient.id, role:"patient", type:"booking",
-      message: `Appointment requested with ${doctor.name} on ${fmtDateLabel(date)} at ${fmtTime12(time)}. Token #${tokenNumber}.`,
-      date: new Date().toISOString(), read:false
-    }]);
-    setConfirmed(appt);
-    setStep(5);
+    if (doctor.isDemo) {
+      const appt = { id: uid("apt"), ...base, isDemo:true };
+      ctx.updateAppointments(prev => [...prev, appt]);
+      ctx.updateNotifications(prev => [...prev, {
+        id: uid("notif"), userId: patient.id, role:"patient", type:"booking",
+        message: `Appointment requested with ${doctor.name} on ${fmtDateLabel(date)} at ${fmtTime12(time)}. Token #${tokenNumber}.`,
+        date: new Date().toISOString(), read:false
+      }]);
+      setConfirmed(appt);
+      setStep(5);
+      return;
+    }
+    setBookingLoading(true);
+    try {
+      const { data, error } = await supabase.from("appointments").insert({
+        patient_id: patient.id, doctor_id: doctor.id, appt_date: date, appt_time: time,
+        consult_type: type, status: "pending", token_number: tokenNumber, fee: doctor.fee,
+        reason: base.reason, patient_name: form.name, patient_phone: form.phone,
+        patient_age: form.age, patient_gender: form.gender
+      }).select().single();
+      if (error) throw error;
+      await ctx.refreshRealAppointments();
+      const appt = { id: data.id, ...base, isDemo:false };
+      ctx.updateNotifications(prev => [...prev, {
+        id: uid("notif"), userId: patient.id, role:"patient", type:"booking",
+        message: `Appointment requested with ${doctor.name} on ${fmtDateLabel(date)} at ${fmtTime12(time)}. Token #${tokenNumber}.`,
+        date: new Date().toISOString(), read:false
+      }]);
+      setConfirmed(appt);
+      setStep(5);
+    } catch (e) {
+      ctx.showToast("Could not book appointment. Please try again.","danger");
+    } finally {
+      setBookingLoading(false);
+    }
   };
 
   if (step===5 && confirmed){
@@ -1363,7 +1501,7 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
               <Row icon={type==="Video Consult"?Video:Building2} label="Type" value={type} />
               <Row icon={IndianRupee} label="Consultation fee" value={`₹${doctor.fee}`} />
             </Card>
-            <Btn full size="lg" icon={CheckCircle2} onClick={confirmBooking}>Confirm Booking</Btn>
+            <Btn full size="lg" icon={CheckCircle2} onClick={confirmBooking} disabled={bookingLoading}>{bookingLoading ? "Booking..." : "Confirm Booking"}</Btn>
           </div>
         )}
       </div>
@@ -1447,7 +1585,7 @@ function AppointmentDetail({ ctx, appt, patient, onBack }){
   const existingReview = ctx.reviews.find(r=>r.appointmentId===appt.id);
 
   const cancelAppt = () => {
-    ctx.updateAppointments(prev => prev.map(a => a.id===appt.id ? {...a, status:"cancelled"} : a));
+    ctx.syncAppt(appt.id, {status:"cancelled"});
     ctx.updateNotifications(prev => [...prev, { id:uid("notif"), userId:patient.id, role:"patient", type:"cancel", message:`Your appointment with ${doc.name} on ${fmtDateLabel(appt.date)} was cancelled.`, date:new Date().toISOString(), read:false }]);
     ctx.showToast("Appointment cancelled");
     setShowCancel(false);
@@ -1536,7 +1674,7 @@ function RescheduleModal({ open, onClose, ctx, appt, doctor, patient }){
   const slots = getSlotsForDate(doctor, date, ctx.appointments.filter(a=>a.id!==appt.id));
   const submit = () => {
     if (!time) { ctx.showToast("Select a new time slot","danger"); return; }
-    ctx.updateAppointments(prev => prev.map(a => a.id===appt.id ? {...a, date, time, status:"pending", rescheduled:true} : a));
+    ctx.syncAppt(appt.id, {date, time, status:"pending", rescheduled:true});
     ctx.updateNotifications(prev => [...prev, { id:uid("notif"), userId:patient.id, role:"patient", type:"reschedule", message:`Appointment with ${doctor.name} rescheduled to ${fmtDateLabel(date)} at ${fmtTime12(time)}.`, date:new Date().toISOString(), read:false }]);
     ctx.showToast("Appointment rescheduled");
     onClose();
@@ -1645,7 +1783,13 @@ function PatientProfile({ ctx, patient, onOpenDoctor }){
       <TopBar title="Profile" right={<button className="mq-btn" onClick={()=>ctx.logout()} style={{background:"none",color:COLORS.danger,display:"flex",alignItems:"center",gap:5,fontSize:12.5,fontWeight:700}}><LogOut size={15}/>Logout</button>} />
       <div style={{padding:16}}>
         <Card style={{textAlign:"center",marginBottom:16}}>
-          <Avatar src="" name={patient.name} size={68} />
+          <label style={{display:"inline-block",position:"relative",cursor:"pointer"}}>
+            <Avatar src={patient.photo} name={patient.name} size={68} />
+            <div style={{position:"absolute",bottom:0,right:0,width:24,height:24,borderRadius:"50%",background:COLORS.primary,display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid #fff"}}>
+              <Camera size={13} color="#fff" />
+            </div>
+            <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{ const f=e.target.files?.[0]; if(f) ctx.uploadAvatar(f); }} />
+          </label>
           <div style={{fontWeight:800,fontSize:16,marginTop:10}}>{patient.name}</div>
           <div style={{fontSize:12.5,color:COLORS.muted}}>{patient.phone}</div>
           <div style={{display:"flex",justifyContent:"center",gap:20,marginTop:14}}>
@@ -1712,15 +1856,18 @@ function DoctorApp({ ctx }){
     { key:"appointments", label:"Appointments", icon:ClipboardList, badge:pendingCount },
     { key:"queue", label:"Queue", icon:ListChecks },
     { key:"patients", label:"Patients", icon:Users },
+    { key:"messages", label:"Chats", icon:MessageCircle, badge: ctx.unreadChats },
     { key:"profile", label:"Profile", icon:UserCog },
   ];
   const goTab = (t) => { setTab(t); setView({name:t}); };
 
   let content;
-  if (tab==="dashboard") content = <DoctorDashboard ctx={ctx} doctor={doctor} goTab={goTab} />;
+  if (view?.name === "chatConversation") content = <ChatConversation ctx={ctx} chatId={view.chatId} onBack={()=>setView({name:"messages"})} />;
+  else if (tab==="dashboard") content = <DoctorDashboard ctx={ctx} doctor={doctor} goTab={goTab} />;
   else if (tab==="appointments") content = <DoctorAppointments ctx={ctx} doctor={doctor} />;
   else if (tab==="queue") content = <DoctorQueue ctx={ctx} doctor={doctor} />;
   else if (tab==="patients") content = <DoctorPatients ctx={ctx} doctor={doctor} />;
+  else if (tab==="messages") content = <DoctorMessages ctx={ctx} doctor={doctor} onOpenChat={(chatId)=>setView({name:"chatConversation", chatId})} />;
   else if (tab==="profile") content = <DoctorProfileSettings ctx={ctx} doctor={doctor} />;
 
   return (
@@ -1821,12 +1968,12 @@ function DoctorDashboard({ ctx, doctor, goTab }){
 
 function DoctorApptRow({ ctx, appt, compact=false }){
   const accept = () => {
-    ctx.updateAppointments(prev => prev.map(a=>a.id===appt.id?{...a,status:"confirmed"}:a));
+    ctx.syncAppt(appt.id, {status:"confirmed"});
     ctx.updateNotifications(prev => [...prev, { id:uid("notif"), userId:appt.patientId, role:"patient", type:"confirm", message:`Your appointment for ${fmtDateLabel(appt.date)} at ${fmtTime12(appt.time)} was confirmed. Token #${appt.tokenNumber}.`, date:new Date().toISOString(), read:false }]);
     ctx.showToast("Appointment confirmed");
   };
   const reject = () => {
-    ctx.updateAppointments(prev => prev.map(a=>a.id===appt.id?{...a,status:"rejected"}:a));
+    ctx.syncAppt(appt.id, {status:"rejected"});
     ctx.updateNotifications(prev => [...prev, { id:uid("notif"), userId:appt.patientId, role:"patient", type:"reject", message:`Your appointment request for ${fmtDateLabel(appt.date)} was declined by the doctor.`, date:new Date().toISOString(), read:false }]);
     ctx.showToast("Appointment declined","danger");
   };
@@ -1863,7 +2010,7 @@ function DoctorAppointments({ ctx, doctor }){
   });
 
   const setStatus = (a, status) => {
-    ctx.updateAppointments(prev => prev.map(x=>x.id===a.id?{...x,status}:x));
+    ctx.syncAppt(a.id, {status});
     const msgs = { confirmed:"confirmed", cancelled:"cancelled", arrived:"marked as arrived", completed:"marked as completed", rejected:"declined" };
     ctx.updateNotifications(prev => [...prev, { id:uid("notif"), userId:a.patientId, role:"patient", type:status, message:`Your appointment on ${fmtDateLabel(a.date)} was ${msgs[status]||status} by ${doctor.name}.`, date:new Date().toISOString(), read:false }]);
     ctx.showToast(`Appointment ${msgs[status]||status}`);
@@ -1937,7 +2084,7 @@ function DoctorRescheduleModal({ open, onClose, ctx, appt, doctor }){
   const slots = getSlotsForDate(doctor, date, ctx.appointments.filter(a=>a.id!==appt.id));
   const submit = () => {
     if (!time){ ctx.showToast("Select a slot","danger"); return; }
-    ctx.updateAppointments(prev => prev.map(a=>a.id===appt.id?{...a,date,time,rescheduled:true}:a));
+    ctx.syncAppt(appt.id, {date, time, rescheduled:true});
     ctx.updateNotifications(prev => [...prev, { id:uid("notif"), userId:appt.patientId, role:"patient", type:"reschedule", message:`${doctor.name} rescheduled your appointment to ${fmtDateLabel(date)} at ${fmtTime12(time)}.`, date:new Date().toISOString(), read:false }]);
     ctx.showToast("Appointment rescheduled");
     onClose();
@@ -1973,12 +2120,12 @@ function DoctorQueue({ ctx, doctor }){
     // mark current as completed if exists, advance token
     const current = dayAppts.find(a=>a.tokenNumber===currentToken);
     if (current && current.status!=="completed"){
-      ctx.updateAppointments(prev => prev.map(a=>a.id===current.id?{...a,status:"completed"}:a));
+      ctx.syncAppt(current.id, {status:"completed"});
     }
     const nextAppt = dayAppts.find(a=>a.tokenNumber>currentToken);
     if (nextAppt){
       setToken(nextAppt.tokenNumber);
-      ctx.updateAppointments(prev => prev.map(a=>a.id===nextAppt.id?{...a,status:"arrived"}:a));
+      ctx.syncAppt(nextAppt.id, {status:"arrived"});
       ctx.updateNotifications(prev => [...prev, { id:uid("notif"), userId:nextAppt.patientId, role:"patient", type:"queue", message:`It's your turn! ${doctor.name} is now calling token #${nextAppt.tokenNumber}.`, date:new Date().toISOString(), read:false }]);
       ctx.showToast(`Now calling token #${nextAppt.tokenNumber}`);
     } else {
@@ -2081,8 +2228,23 @@ function DoctorProfileSettings({ ctx, doctor }){
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const [newBlockDate, setNewBlockDate] = useState("");
 
-  const save = () => {
+  const save = async () => {
     ctx.updateDoctors(prev => prev.map(d=>d.id===doctor.id?{...d,...form}:d));
+    if (!doctor.isDemo) {
+      try {
+        await supabase.from("doctors").update({
+          specialty: form.specialization, qualification: form.qualification, experience: form.experience,
+          clinic_name: form.clinicName, clinic_address: form.address, area: form.area, about: form.about,
+          fee: form.fee, start_time: form.startTime, end_time: form.endTime,
+          break_start: form.breakStart, break_end: form.breakEnd, slot_duration: form.slotDuration,
+          working_days: form.workingDays, blocked_dates: form.blockedDates, consult_types: form.consultTypes,
+          clinic_lat: form.clinicLat || null, clinic_lng: form.clinicLng || null,
+        }).eq("profile_id", doctor.id);
+        if (form.name !== doctor.name) {
+          await supabase.from("profiles").update({ full_name: form.name }).eq("id", doctor.id);
+        }
+      } catch (e) { /* local update already applied; will retry on next save */ }
+    }
     ctx.showToast("Settings saved");
   };
   const toggleDay = (d) => {
@@ -2110,7 +2272,13 @@ function DoctorProfileSettings({ ctx, doctor }){
         {tab==="profile" && (
           <div>
             <Card style={{textAlign:"center",marginBottom:16}}>
-              <Avatar src={doctor.photo} name={doctor.name} size={72} />
+              <label style={{display:"inline-block",position:"relative",cursor:"pointer"}}>
+                <Avatar src={doctor.photo} name={doctor.name} size={72} />
+                <div style={{position:"absolute",bottom:0,right:0,width:26,height:26,borderRadius:"50%",background:COLORS.primary,display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid #fff"}}>
+                  <Camera size={14} color="#fff" />
+                </div>
+                <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{ const f=e.target.files?.[0]; if(f) ctx.uploadAvatar(f); }} />
+              </label>
               <div style={{fontWeight:800,fontSize:16,marginTop:10}}>{doctor.name}</div>
               <Badge tone="success">Verified Doctor</Badge>
             </Card>
@@ -2124,6 +2292,18 @@ function DoctorProfileSettings({ ctx, doctor }){
             <Field label="Address"><TextInput value={form.address} onChange={e=>set("address",e.target.value)} /></Field>
             <Field label="Area">
               <Select value={form.area} onChange={e=>set("area",e.target.value)}>{AREAS.map(a=><option key={a}>{a}</option>)}</Select>
+            </Field>
+            <Field label="Exact clinic location" hint="Stand at your clinic and tap this so patients get an accurate map and directions">
+              <Btn variant="outline" icon={MapPin} onClick={()=>{
+                if (!navigator.geolocation) { ctx.showToast("Location not supported on this device","danger"); return; }
+                navigator.geolocation.getCurrentPosition(
+                  (pos)=>{ set("clinicLat", pos.coords.latitude); set("clinicLng", pos.coords.longitude); ctx.showToast("Location captured — don't forget to Save Changes"); },
+                  ()=>ctx.showToast("Could not get your location — check location permission","danger")
+                );
+              }}>
+                {form.clinicLat ? "Update Clinic Location" : "Set My Clinic Location"}
+              </Btn>
+              {form.clinicLat && <div style={{fontSize:11.5,color:COLORS.muted,marginTop:6}}>Location saved ✓</div>}
             </Field>
             <Field label="About"><TextArea value={form.about} onChange={e=>set("about",e.target.value)} /></Field>
             <Field label="Consultation types">
@@ -2348,6 +2528,11 @@ function AdminDoctors({ ctx }){
     ctx.showToast("Doctor removed","danger");
     setSelected(null);
   };
+  const viewDoc = async (path) => {
+    const { data, error } = await supabase.storage.from("doctor-documents").createSignedUrl(path, 60);
+    if (error || !data?.signedUrl) { ctx.showToast("Could not open document","danger"); return; }
+    window.open(data.signedUrl, "_blank");
+  };
 
   return (
     <div className="mq-fade-in">
@@ -2403,7 +2588,21 @@ function AdminDoctors({ ctx }){
             <div style={{marginBottom:14}}>
               <div style={{fontWeight:700,fontSize:12.5,marginBottom:6}}>Verification documents</div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                {selected.verificationDocs.map(doc=><Badge key={doc} tone="default"><FileText size={11}/>{doc}</Badge>)}
+                {selected.isDemo
+                  ? selected.verificationDocs.map(doc=><Badge key={doc} tone="default"><FileText size={11}/>{doc}</Badge>)
+                  : [
+                      ["medical_registration","Medical Registration"],
+                      ["id_proof","ID Proof"],
+                      ["degree_certificate","Degree Certificate"],
+                      ["clinic_registration","Clinic Registration"],
+                    ].map(([key,label]) => selected.docs?.[key] ? (
+                      <Btn key={key} variant="outline" onClick={()=>viewDoc(selected.docs[key])}><FileText size={14}/> {label}</Btn>
+                    ) : (
+                      <Badge key={key} tone={key==="clinic_registration" ? "default" : "danger"}>
+                        {key==="clinic_registration" ? `${label}: not provided (optional)` : `${label}: missing`}
+                      </Badge>
+                    ))
+                }
               </div>
             </div>
             {selected.status==="pending" && (
@@ -2437,7 +2636,7 @@ function AdminAppointments({ ctx }){
   list = list.slice(0,60);
 
   const cancelAppt = (a) => {
-    ctx.updateAppointments(prev => prev.map(x=>x.id===a.id?{...x,status:"cancelled"}:x));
+    ctx.syncAppt(a.id, {status:"cancelled"});
     ctx.showToast("Appointment cancelled by admin");
   };
 
@@ -2632,6 +2831,295 @@ function AdminClinics({ ctx }){
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ============================================================================
+   CHAT — patient can request a chat with a doctor they've had a completed
+   appointment with in the last 10 days; doctor accepts/declines; once
+   accepted, both sides can message (including images) until the 10-day
+   window (from that appointment) closes, after which it becomes read-only.
+============================================================================ */
+
+function PatientMessages({ ctx, patient, onOpenChat }){
+  const [chats, setChats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    const { data } = await supabase.from("chats").select("*").eq("patient_id", patient.id).order("created_at", { ascending:false });
+    setChats(data || []);
+    setLoading(false);
+  };
+  useEffect(()=>{ load(); }, []);
+
+  // Doctors this patient has had a completed appointment with, within the last 10 days
+  const now = Date.now();
+  const eligibleDoctorIds = [...new Set(
+    ctx.appointments
+      .filter(a => a.patientId===patient.id && a.status==="completed" && !a.isDemo)
+      .filter(a => (now - new Date(a.date).getTime()) <= 10*86400000)
+      .map(a => a.doctorId)
+  )];
+  const chattedDoctorIds = new Set((chats||[]).map(c=>c.doctor_id));
+  const canRequest = eligibleDoctorIds.filter(id => !chattedDoctorIds.has(id));
+
+  const requestChat = async (doctorId) => {
+    const appt = ctx.appointments.find(a=>a.patientId===patient.id && a.doctorId===doctorId && a.status==="completed");
+    const expiresAt = new Date(new Date(appt.date).getTime() + 10*86400000).toISOString();
+    const { error } = await supabase.from("chats").insert({ patient_id: patient.id, doctor_id: doctorId, appointment_id: appt.id, status:"pending", expires_at: expiresAt });
+    if (error) { ctx.showToast("Could not send chat request","danger"); return; }
+    ctx.showToast("Chat request sent");
+    load();
+  };
+
+  if (loading) return <LoadingState />;
+
+  return (
+    <div className="mq-fade-in">
+      <div style={{padding:"18px 16px 8px"}}><div className="mq-display" style={{fontSize:20,fontWeight:800}}>Messages</div></div>
+      {canRequest.length>0 && (
+        <div style={{padding:"0 16px 8px"}}>
+          <div style={{fontWeight:700,fontSize:12.5,color:COLORS.muted,marginBottom:8}}>START A CHAT</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {canRequest.map(id=>{
+              const doc = ctx.doctors.find(d=>d.id===id);
+              if (!doc) return null;
+              return (
+                <Card key={id} style={{display:"flex",gap:10,alignItems:"center"}}>
+                  <Avatar src={doc.photo} name={doc.name} size={40} />
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:13.5}}>{doc.name}</div>
+                    <div style={{fontSize:11.5,color:COLORS.muted}}>{doc.specialization}</div>
+                  </div>
+                  <Btn size="sm" onClick={()=>requestChat(id)}>Request Chat</Btn>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <div style={{padding:"12px 16px"}}>
+        <div style={{fontWeight:700,fontSize:12.5,color:COLORS.muted,marginBottom:8}}>MY CHATS</div>
+        {(!chats || chats.length===0) ? (
+          <EmptyState icon={MessageCircle} title="No chats yet" subtitle="Chats become available for 10 days after a completed appointment." />
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {chats.map(c=>{
+              const doc = ctx.doctors.find(d=>d.id===c.doctor_id);
+              const expired = new Date(c.expires_at) < new Date();
+              return (
+                <Card key={c.id} hover onClick={()=>onOpenChat(c.id)} style={{display:"flex",gap:10,alignItems:"center"}}>
+                  <Avatar src={doc?.photo} name={doc?.name||"Doctor"} size={40} />
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:13.5}}>{doc?.name || "Doctor"}</div>
+                    <div style={{fontSize:11.5,color:COLORS.muted}}>{doc?.specialization}</div>
+                  </div>
+                  <Badge tone={c.status==="pending"?"warning":c.status==="declined"?"danger":expired?"default":"success"}>
+                    {c.status==="pending"?"Pending":c.status==="declined"?"Declined":expired?"Expired":"Active"}
+                  </Badge>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DoctorMessages({ ctx, doctor, onOpenChat }){
+  const [chats, setChats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    const { data } = await supabase.from("chats").select("*").eq("doctor_id", doctor.id).order("created_at", { ascending:false });
+    setChats(data || []);
+    setLoading(false);
+  };
+  useEffect(()=>{ load(); }, []);
+
+  const respond = async (chatId, status) => {
+    await supabase.from("chats").update({ status }).eq("id", chatId);
+    ctx.showToast(status==="accepted" ? "Chat request accepted" : "Chat request declined");
+    load();
+  };
+
+  if (loading) return <LoadingState />;
+
+  const pending = (chats||[]).filter(c=>c.status==="pending");
+  const active = (chats||[]).filter(c=>c.status!=="pending");
+
+  return (
+    <div className="mq-fade-in">
+      <div style={{padding:"18px 16px 8px"}}><div className="mq-display" style={{fontSize:20,fontWeight:800}}>Messages</div></div>
+      {pending.length>0 && (
+        <div style={{padding:"0 16px 8px"}}>
+          <div style={{fontWeight:700,fontSize:12.5,color:COLORS.muted,marginBottom:8}}>CHAT REQUESTS</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {pending.map(c=>{
+              const pat = ctx.patients.find(p=>p.id===c.patient_id);
+              return (
+                <Card key={c.id} style={{display:"flex",gap:10,alignItems:"center"}}>
+                  <Avatar src={pat?.photo} name={pat?.name||"Patient"} size={40} />
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:13.5}}>{pat?.name || "Patient"}</div>
+                    <div style={{fontSize:11.5,color:COLORS.muted}}>Wants to chat with you</div>
+                  </div>
+                  <Btn size="sm" variant="dangerOutline" onClick={()=>respond(c.id,"declined")}>Decline</Btn>
+                  <Btn size="sm" onClick={()=>respond(c.id,"accepted")}>Accept</Btn>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <div style={{padding:"12px 16px"}}>
+        <div style={{fontWeight:700,fontSize:12.5,color:COLORS.muted,marginBottom:8}}>CHATS</div>
+        {active.length===0 ? (
+          <EmptyState icon={MessageCircle} title="No active chats" />
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {active.map(c=>{
+              const pat = ctx.patients.find(p=>p.id===c.patient_id);
+              const expired = new Date(c.expires_at) < new Date();
+              return (
+                <Card key={c.id} hover onClick={()=>onOpenChat(c.id)} style={{display:"flex",gap:10,alignItems:"center"}}>
+                  <Avatar src={pat?.photo} name={pat?.name||"Patient"} size={40} />
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:13.5}}>{pat?.name || "Patient"}</div>
+                  </div>
+                  <Badge tone={c.status==="declined"?"danger":expired?"default":"success"}>
+                    {c.status==="declined"?"Declined":expired?"Expired":"Active"}
+                  </Badge>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChatConversation({ ctx, chatId, onBack }){
+  const [chat, setChat] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [imageUrls, setImageUrls] = useState({});
+  const [viewImage, setViewImage] = useState(null);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data: chatRow } = await supabase.from("chats").select("*").eq("id", chatId).single();
+      setChat(chatRow);
+      const { data: msgs } = await supabase.from("messages").select("*").eq("chat_id", chatId).order("created_at");
+      setMessages(msgs || []);
+      // Mark any messages the other person sent as read now that we've opened this chat
+      await supabase.from("messages").update({ read:true }).eq("chat_id", chatId).neq("sender_id", ctx.session.id).eq("read", false);
+      ctx.refreshUnreadChats();
+    })();
+
+    const channel = supabase.channel(`chat-${chatId}`)
+      .on("postgres_changes", { event:"INSERT", schema:"public", table:"messages", filter:`chat_id=eq.${chatId}` }, (payload) => {
+        setMessages(prev => [...prev, payload.new]);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [chatId]);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages]);
+
+  // Resolve signed URLs for any image messages we haven't fetched yet
+  useEffect(() => {
+    messages.filter(m=>m.image_path && !imageUrls[m.id]).forEach(async (m) => {
+      const { data } = await supabase.storage.from("chat-images").createSignedUrl(m.image_path, 3600);
+      if (data?.signedUrl) setImageUrls(prev => ({ ...prev, [m.id]: data.signedUrl }));
+    });
+  }, [messages]);
+
+  if (!chat) return <LoadingState />;
+
+  const isPatientSide = ctx.session.id === chat.patient_id;
+  const otherName = isPatientSide
+    ? (ctx.doctors.find(d=>d.id===chat.doctor_id)?.name || "Doctor")
+    : (ctx.patients.find(p=>p.id===chat.patient_id)?.name || "Patient");
+  const expired = new Date(chat.expires_at) < new Date();
+  const canSend = chat.status==="accepted" && !expired;
+
+  const send = async () => {
+    if (!text.trim()) return;
+    setSending(true);
+    const { error } = await supabase.from("messages").insert({ chat_id: chatId, sender_id: ctx.session.id, text: text.trim() });
+    if (!error) setText("");
+    setSending(false);
+  };
+
+  const sendImage = async (file) => {
+    setSending(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `${chatId}/${uid("img")}.${ext}`;
+      const { error: eUp } = await supabase.storage.from("chat-images").upload(path, file);
+      if (eUp) throw eUp;
+      await supabase.from("messages").insert({ chat_id: chatId, sender_id: ctx.session.id, image_path: path });
+    } catch (e) {
+      ctx.showToast("Could not send image","danger");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="mq-fade-in" style={{display:"flex",flexDirection:"column",height:"100vh"}}>
+      <TopBar title={otherName} onBack={onBack} />
+      {chat.status==="pending" && <div style={{padding:"10px 16px",background:COLORS.warnSoft,color:COLORS.warning,fontSize:12.5,fontWeight:600}}>Waiting for the doctor to accept this chat request.</div>}
+      {chat.status==="declined" && <div style={{padding:"10px 16px",background:COLORS.dangerSoft,color:COLORS.danger,fontSize:12.5,fontWeight:600}}>This chat request was declined.</div>}
+      {chat.status==="accepted" && expired && <div style={{padding:"10px 16px",background:COLORS.border,color:COLORS.muted,fontSize:12.5,fontWeight:600}}>This chat has ended (10-day window closed). You can still view the history below.</div>}
+
+      <div style={{flex:1,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:8}}>
+        {messages.map(m=>{
+          const mine = m.sender_id===ctx.session.id;
+          return (
+            <div key={m.id} style={{alignSelf: mine?"flex-end":"flex-start", maxWidth:"75%"}}>
+              <div style={{background: mine?COLORS.primary:"#fff", color: mine?"#fff":COLORS.text, border: mine?"none":`1px solid ${COLORS.border}`, borderRadius:14, padding: m.image_path ? 6 : "10px 13px", fontSize:13.5}}>
+                {m.image_path
+                  ? (imageUrls[m.id] ? <img src={imageUrls[m.id]} onClick={()=>setViewImage(imageUrls[m.id])} style={{maxWidth:200,borderRadius:10,display:"block",cursor:"pointer"}} /> : <div style={{padding:10}}><Loader2 size={16} style={{animation:"spin 1s linear infinite"}} /></div>)
+                  : m.text}
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+
+      {canSend ? (
+        <div style={{display:"flex",gap:8,padding:12,borderTop:`1px solid ${COLORS.border}`,alignItems:"center"}}>
+          <label style={{cursor:"pointer",flexShrink:0}}>
+            <ImageIcon size={22} color={COLORS.muted} />
+            <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{ const f=e.target.files?.[0]; if(f) sendImage(f); }} />
+          </label>
+          <input value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>e.key==="Enter" && send()} placeholder="Type a message..." style={{flex:1,padding:"10px 14px",borderRadius:20,border:`1px solid ${COLORS.border}`,fontSize:13.5,outline:"none"}} />
+          <button onClick={send} disabled={sending || !text.trim()} style={{width:38,height:38,borderRadius:"50%",background:COLORS.primary,border:"none",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:sending||!text.trim()?0.6:1}}>
+            <Send size={16} color="#fff" />
+          </button>
+        </div>
+      ) : (
+        <div style={{padding:14,textAlign:"center",fontSize:12.5,color:COLORS.muted,borderTop:`1px solid ${COLORS.border}`}}>
+          {chat.status==="pending" ? "You can send messages once the doctor accepts." : "This conversation is read-only."}
+        </div>
+      )}
+
+      {viewImage && (
+        <div onClick={()=>setViewImage(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <button onClick={()=>setViewImage(null)} style={{position:"absolute",top:18,right:18,background:"rgba(255,255,255,0.15)",border:"none",borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <X size={20} color="#fff" />
+          </button>
+          <img src={viewImage} style={{maxWidth:"100%",maxHeight:"100%",borderRadius:8}} onClick={e=>e.stopPropagation()} />
+        </div>
+      )}
     </div>
   );
 }
