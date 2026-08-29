@@ -237,12 +237,22 @@ function generateReviews(doctors, patients, appointments){
       ];
       reviews.push({
         id: uid("rev"), doctorId: a.doctorId, patientId: a.patientId, appointmentId: a.id,
-        rating: rnd(3,5), comment: pick(comments), date: a.date
+        rating: rnd(3,5), comment: pick(comments), date: a.date, isDemo:true
       });
     }
   });
   return reviews;
 }
+
+// Turns a real Supabase 'reviews' row into the same shape the app already expects.
+function mapRealReviewRow(row){
+  return {
+    id: row.id, doctorId: row.doctor_id, patientId: row.patient_id, appointmentId: row.appointment_id,
+    rating: row.rating, comment: row.comment, date: (row.created_at||"").slice(0,10) || new Date().toISOString().slice(0,10),
+    isDemo: false,
+  };
+}
+
 
 function generateSamplePatients(n){
   const pats = [];
@@ -560,6 +570,7 @@ export default function App(){
       }
       await refreshRealDoctors();
       await refreshRealAppointments();
+      await refreshRealReviews();
       setBooted(true);
     })();
 
@@ -567,6 +578,7 @@ export default function App(){
       if (!supaSession) setSession(null);
       refreshRealDoctors();
       refreshRealAppointments();
+      refreshRealReviews();
     });
     return () => authListener?.subscription?.unsubscribe();
   }, []);
@@ -588,6 +600,21 @@ export default function App(){
     const { data: rows } = await supabase.from("appointments").select("*");
     const realMapped = (rows || []).map(mapRealAppointmentRow);
     setAppointments(prev => [...prev.filter(a => a.isDemo), ...realMapped]);
+  };
+
+  // Fetches real reviews (publicly readable) and recomputes each real doctor's
+  // average rating / review count from them, so it reflects genuine feedback.
+  const refreshRealReviews = async () => {
+    const { data: rows } = await supabase.from("reviews").select("*");
+    const realMapped = (rows || []).map(mapRealReviewRow);
+    setReviews(prev => [...prev.filter(r => r.isDemo), ...realMapped]);
+    setDoctors(prev => prev.map(d => {
+      if (d.isDemo) return d;
+      const mine = realMapped.filter(r => r.doctorId === d.id);
+      if (mine.length === 0) return { ...d, rating: 0, reviewCount: 0 };
+      const avg = round1(mine.reduce((s,r)=>s+r.rating,0) / mine.length);
+      return { ...d, rating: avg, reviewCount: mine.length };
+    }));
   };
 
   const loadRealSession = async (userId) => {
@@ -683,11 +710,38 @@ export default function App(){
     return () => { supabase.removeChannel(channel); };
   }, [session?.id]);
 
+  // In-app reminders: whenever the app loads and there's an appointment happening
+  // today or tomorrow, create a one-time reminder notification for that person
+  // (patient or doctor) — free, no email/SMS needed, using data already on hand.
+  useEffect(() => {
+    if (!booted || !session || (session.role!=="patient" && session.role!=="doctor")) return;
+    const todayStr = fmtDate(new Date());
+    const tomorrowStr = fmtDate(new Date(Date.now()+86400000));
+    const mine = appointments.filter(a => {
+      const isMine = session.role==="patient" ? a.patientId===session.id : a.doctorId===session.id;
+      return isMine && !a.isDemo && ["confirmed","arrived"].includes(a.status) && (a.date===todayStr || a.date===tomorrowStr);
+    });
+    mine.forEach(a => {
+      const already = notifications.some(n => n.type==="reminder" && n.apptId===a.id && n.reminderDate===todayStr);
+      if (already) return;
+      const isToday = a.date===todayStr;
+      const doc = doctors.find(d=>d.id===a.doctorId);
+      const pat = patients.find(p=>p.id===a.patientId);
+      const message = session.role==="patient"
+        ? `Reminder: your appointment with ${doc?.name||"the doctor"} is ${isToday?"today":"tomorrow"} at ${fmtTime12(a.time)}.`
+        : `Reminder: you have an appointment with ${pat?.name||"a patient"} ${isToday?"today":"tomorrow"} at ${fmtTime12(a.time)}.`;
+      updateNotifications(prev => [...prev, {
+        id: uid("notif"), userId: session.id, role: session.role, type:"reminder",
+        apptId: a.id, reminderDate: todayStr, message, date: new Date().toISOString(), read:false
+      }]);
+    });
+  }, [booted, session?.id, appointments.length]);
+
   const ctx = {
     doctors, patients, appointments, reviews, notifications, specialties,
     updateDoctors, updatePatients, updateAppointments, updateReviews, updateNotifications, updateSpecialties,
     showToast, session, login, logout, refreshRealDoctors, uploadAvatar, syncAppt, refreshRealAppointments,
-    unreadChats, refreshUnreadChats
+    unreadChats, refreshUnreadChats, refreshRealReviews
   };
 
   if (!booted) {
@@ -965,12 +1019,13 @@ function PatientApp({ ctx }){
   else if (view.name === "booking") content = <BookingFlow ctx={ctx} doctor={ctx.doctors.find(d=>d.id===view.doctorId)} patient={patient} onDone={()=>{ setTab("appointments"); setView({name:"appointments"}); }} onBack={()=>setView({name:"doctorProfile", doctorId:view.doctorId})} />;
   else if (view.name === "appointmentDetail") content = <AppointmentDetail ctx={ctx} appt={ctx.appointments.find(a=>a.id===view.apptId)} patient={patient} onBack={()=>setView({name:"appointments"})} />;
   else if (view.name === "chatConversation") content = <ChatConversation ctx={ctx} chatId={view.chatId} onBack={()=>setView({name:"messages"})} />;
+  else if (view.name === "familyMembers") content = <FamilyMembersScreen ctx={ctx} patient={patient} onBack={()=>setView({name:"profile"})} />;
   else if (tab === "home") content = <PatientHome ctx={ctx} patient={patient} onOpenDoctor={(d)=>setView({name:"doctorProfile", doctorId:d.id})} goSearch={(q)=>{ setSearch(q||""); goTab("search"); }} />;
   else if (tab === "search") content = <PatientSearch ctx={ctx} initialQuery={search} onOpenDoctor={(d)=>setView({name:"doctorProfile", doctorId:d.id})} />;
   else if (tab === "appointments") content = <PatientAppointments ctx={ctx} patient={patient} onOpen={(a)=>setView({name:"appointmentDetail", apptId:a.id})} onBookAgain={(doc)=>setView({name:"doctorProfile", doctorId:doc.id})} />;
   else if (tab === "messages") content = <PatientMessages ctx={ctx} patient={patient} onOpenChat={(chatId)=>setView({name:"chatConversation", chatId})} />;
   else if (tab === "notifications") content = <PatientNotifications ctx={ctx} patient={patient} />;
-  else if (tab === "profile") content = <PatientProfile ctx={ctx} patient={patient} onOpenDoctor={(d)=>setView({name:"doctorProfile", doctorId:d.id})} />;
+  else if (tab === "profile") content = <PatientProfile ctx={ctx} patient={patient} onOpenDoctor={(d)=>setView({name:"doctorProfile", doctorId:d.id})} onOpenFamily={()=>setView({name:"familyMembers"})} />;
 
   return (
     <div style={{display:"flex",flexDirection:"column",minHeight:"100vh"}}>
@@ -1325,6 +1380,22 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
   const [time, setTime] = useState(null);
   const [form, setForm] = useState({ name: patient.name, phone: patient.phone, age:"", gender: patient.gender||"", reason:"" });
   const [confirmed, setConfirmed] = useState(null);
+  const [familyMembers, setFamilyMembers] = useState([]);
+  const [selectedFamilyId, setSelectedFamilyId] = useState(null); // null = booking for myself
+  const [showAddFamily, setShowAddFamily] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("family_members").select("*").eq("patient_id", patient.id).order("created_at");
+      setFamilyMembers(data || []);
+    })();
+  }, []);
+
+  const chooseWhoFor = (member) => {
+    setSelectedFamilyId(member ? member.id : null);
+    if (member) setForm(f => ({ ...f, name: member.name, age: member.age||"", gender: member.gender||"" }));
+    else setForm(f => ({ ...f, name: patient.name, age:"", gender: patient.gender||"" }));
+  };
 
   if (!doctor) return <LoadingState />;
   const dates = next14Days().filter(d => doctor.workingDays.includes(dayOfWeek(d)) && !doctor.blockedDates?.includes(d));
@@ -1363,7 +1434,7 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
         patient_id: patient.id, doctor_id: doctor.id, appt_date: date, appt_time: time,
         consult_type: type, status: "pending", token_number: tokenNumber, fee: doctor.fee,
         reason: base.reason, patient_name: form.name, patient_phone: form.phone,
-        patient_age: form.age, patient_gender: form.gender
+        patient_age: form.age, patient_gender: form.gender, family_member_id: selectedFamilyId
       }).select().single();
       if (error) throw error;
       await ctx.refreshRealAppointments();
@@ -1483,6 +1554,27 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
 
         {step===4 && (
           <div>
+            <SectionHeader title="Who is this visit for?" />
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
+              <button onClick={()=>chooseWhoFor(null)} style={{padding:"8px 14px",borderRadius:20,border:`1.5px solid ${!selectedFamilyId?COLORS.primary:COLORS.border}`,background:!selectedFamilyId?COLORS.primarySoft:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>Myself</button>
+              {familyMembers.map(m=>(
+                <div key={m.id} style={{position:"relative"}}>
+                  <button onClick={()=>chooseWhoFor(m)} style={{padding:"8px 22px 8px 14px",borderRadius:20,border:`1.5px solid ${selectedFamilyId===m.id?COLORS.primary:COLORS.border}`,background:selectedFamilyId===m.id?COLORS.primarySoft:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>{m.name} · {m.relation}</button>
+                  <button
+                    onClick={async (e)=>{
+                      e.stopPropagation();
+                      await supabase.from("family_members").delete().eq("id", m.id);
+                      setFamilyMembers(prev => prev.filter(x=>x.id!==m.id));
+                      if (selectedFamilyId===m.id) chooseWhoFor(null);
+                    }}
+                    style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:"50%",background:COLORS.danger,border:"2px solid #fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0}}
+                  >
+                    <X size={10} color="#fff" />
+                  </button>
+                </div>
+              ))}
+              <button onClick={()=>setShowAddFamily(true)} style={{padding:"8px 14px",borderRadius:20,border:`1.5px dashed ${COLORS.border}`,background:"#fff",fontWeight:700,fontSize:13,color:COLORS.primary,cursor:"pointer"}}>+ Add Family Member</button>
+            </div>
             <SectionHeader title="Patient details" />
             <Field label="Full name *"><TextInput value={form.name} onChange={e=>set("name",e.target.value)} /></Field>
             <Field label="Phone number *"><TextInput value={form.phone} onChange={e=>set("phone",e.target.value.replace(/\D/g,"").slice(0,10))} /></Field>
@@ -1502,6 +1594,10 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
               <Row icon={IndianRupee} label="Consultation fee" value={`₹${doctor.fee}`} />
             </Card>
             <Btn full size="lg" icon={CheckCircle2} onClick={confirmBooking} disabled={bookingLoading}>{bookingLoading ? "Booking..." : "Confirm Booking"}</Btn>
+
+            {showAddFamily && (
+              <AddFamilyMemberModal patient={patient} onClose={()=>setShowAddFamily(false)} onAdded={(member)=>{ setFamilyMembers(prev=>[...prev, member]); chooseWhoFor(member); setShowAddFamily(false); }} />
+            )}
           </div>
         )}
       </div>
@@ -1550,6 +1646,9 @@ function PatientAppointments({ ctx, patient, onOpen, onBookAgain }){
                         <Badge tone={STATUS_TONE(a.status)}>{a.status}</Badge>
                       </div>
                       <div style={{fontSize:11.5,color:COLORS.muted}}>{doc.specialization}</div>
+                      {a.patientName && a.patientName!==patient.name && (
+                        <div style={{fontSize:11,color:COLORS.primary,fontWeight:700,marginTop:2}}>For: {a.patientName}</div>
+                      )}
                       <div style={{display:"flex",gap:12,marginTop:6,fontSize:11.5,color:COLORS.muted}}>
                         <span style={{display:"flex",alignItems:"center",gap:3}}><Calendar size={11}/>{fmtDateLabel(a.date)}</span>
                         <span style={{display:"flex",alignItems:"center",gap:3}}><Clock size={11}/>{fmtTime12(a.time)}</span>
@@ -1577,6 +1676,7 @@ function AppointmentDetail({ ctx, appt, patient, onBack }){
   const [showCancel, setShowCancel] = useState(false);
   const [showReschedule, setShowReschedule] = useState(false);
   const [showReview, setShowReview] = useState(false);
+  const [showPrescription, setShowPrescription] = useState(false);
   if (!appt) return <LoadingState />;
   const doc = ctx.doctors.find(d=>d.id===appt.doctorId);
   const currentToken = doc?.currentTokenByDate?.[appt.date] || 0;
@@ -1643,6 +1743,9 @@ function AppointmentDetail({ ctx, appt, patient, onBack }){
           </div>
         )}
 
+        {appt.status==="completed" && !appt.isDemo && (
+          <div style={{marginBottom:14}}><Btn full variant="outline" icon={FileText} onClick={()=>setShowPrescription(true)}>View Prescription</Btn></div>
+        )}
         {appt.status==="completed" && !existingReview && (
           <Btn full icon={Star} onClick={()=>setShowReview(true)}>Rate & Review</Btn>
         )}
@@ -1650,6 +1753,8 @@ function AppointmentDetail({ ctx, appt, patient, onBack }){
           <Card><div style={{fontWeight:700,fontSize:13,marginBottom:6}}>Your review</div><StarRow rating={existingReview.rating}/><div style={{fontSize:13,color:COLORS.muted,marginTop:6}}>{existingReview.comment}</div></Card>
         )}
       </div>
+
+      {showPrescription && <PrescriptionModal appt={appt} ctx={ctx} onClose={()=>setShowPrescription(false)} canUpload={false} />}
 
       <Modal open={showCancel} onClose={()=>setShowCancel(false)} title="Cancel Appointment">
         <div style={{fontSize:13.5,color:COLORS.muted,marginBottom:18}}>Are you sure you want to cancel this appointment with {doc?.name}? This action cannot be undone.</div>
@@ -1700,21 +1805,197 @@ function RescheduleModal({ open, onClose, ctx, appt, doctor, patient }){
   );
 }
 
+function PrescriptionModal({ appt, ctx, onClose, canUpload }){
+  const [list, setList] = useState(null);
+  const [file, setFile] = useState(null);
+  const [notes, setNotes] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [urls, setUrls] = useState({});
+
+  const load = async () => {
+    const { data } = await supabase.from("prescriptions").select("*").eq("appointment_id", appt.id).order("created_at", { ascending:false });
+    setList(data || []);
+  };
+  useEffect(()=>{ load(); }, []);
+
+  useEffect(() => {
+    (list||[]).forEach(async (p) => {
+      if (urls[p.id]) return;
+      const { data } = await supabase.storage.from("prescriptions").createSignedUrl(p.file_path, 3600);
+      if (data?.signedUrl) setUrls(prev => ({ ...prev, [p.id]: data.signedUrl }));
+    });
+  }, [list]);
+
+  const upload = async () => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `${appt.id}/${uid("rx")}.${ext}`;
+      const { error: eUp } = await supabase.storage.from("prescriptions").upload(path, file);
+      if (eUp) throw eUp;
+      const { error } = await supabase.from("prescriptions").insert({
+        appointment_id: appt.id, doctor_id: appt.doctorId, patient_id: appt.patientId,
+        file_path: path, notes: notes.trim() || null
+      });
+      if (error) throw error;
+      setFile(null); setNotes("");
+      ctx.showToast("Prescription uploaded");
+      load();
+    } catch (e) {
+      ctx.showToast("Could not upload prescription","danger");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <Modal open={true} onClose={onClose} title="Prescription">
+      {list===null ? <LoadingState /> : list.length===0 ? (
+        <div style={{fontSize:13,color:COLORS.muted,marginBottom:16,textAlign:"center"}}>No prescription uploaded yet.</div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:18}}>
+          {list.map(p=>(
+            <Card key={p.id}>
+              <div style={{fontSize:11.5,color:COLORS.muted,marginBottom:6}}>{(p.created_at||"").slice(0,10)}</div>
+              {p.notes && <div style={{fontSize:13,marginBottom:8}}>{p.notes}</div>}
+              {urls[p.id] ? (
+                <Btn size="sm" variant="outline" icon={FileText} onClick={()=>window.open(urls[p.id],"_blank")}>View File</Btn>
+              ) : <Loader2 size={16} style={{animation:"spin 1s linear infinite"}} />}
+            </Card>
+          ))}
+        </div>
+      )}
+      {canUpload && (
+        <div style={{borderTop:`1px solid ${COLORS.border}`,paddingTop:16}}>
+          <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Add a prescription</div>
+          <Field label="Notes (optional)"><TextArea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. Take twice daily after food" /></Field>
+          <label style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",borderRadius:12,border:`1.5px dashed ${COLORS.border}`,cursor:"pointer",fontSize:13,color:file?COLORS.text:COLORS.muted,marginBottom:14}}>
+            <Upload size={17} color={COLORS.primary} />
+            {file ? file.name : "Tap to upload a photo or PDF"}
+            <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>setFile(e.target.files?.[0]||null)} />
+          </label>
+          <Btn full onClick={upload} disabled={!file || uploading}>{uploading ? "Uploading..." : "Upload Prescription"}</Btn>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+
+function AddFamilyMemberModal({ patient, onClose, onAdded }){
+  const [name, setName] = useState("");
+  const [relation, setRelation] = useState("Spouse");
+  const [age, setAge] = useState("");
+  const [gender, setGender] = useState("");
+  const [saving, setSaving] = useState(false);
+  const submit = async () => {
+    if (!name.trim()) return;
+    setSaving(true);
+    const { data, error } = await supabase.from("family_members").insert({
+      patient_id: patient.id, name: name.trim(), relation, age, gender
+    }).select().single();
+    setSaving(false);
+    if (error) return;
+    onAdded(data);
+  };
+  return (
+    <Modal open={true} onClose={onClose} title="Add Family Member">
+      <Field label="Full name *"><TextInput value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Ramesh Kumar" /></Field>
+      <Field label="Relation">
+        <Select value={relation} onChange={e=>setRelation(e.target.value)}>
+          {["Spouse","Child","Parent","Sibling","Other"].map(r=><option key={r}>{r}</option>)}
+        </Select>
+      </Field>
+      <div style={{display:"flex",gap:10}}>
+        <Field label="Age" style={{flex:1}}><TextInput type="number" value={age} onChange={e=>setAge(e.target.value)} /></Field>
+        <Field label="Gender" style={{flex:1}}>
+          <Select value={gender} onChange={e=>setGender(e.target.value)}><option value="">Select</option><option>Male</option><option>Female</option><option>Other</option></Select>
+        </Field>
+      </div>
+      <Btn full size="lg" onClick={submit} disabled={saving || !name.trim()}>{saving ? "Adding..." : "Add Family Member"}</Btn>
+    </Modal>
+  );
+}
+
+function FamilyMembersScreen({ ctx, patient, onBack }){
+  const [members, setMembers] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+
+  const load = async () => {
+    const { data } = await supabase.from("family_members").select("*").eq("patient_id", patient.id).order("created_at");
+    setMembers(data || []);
+  };
+  useEffect(()=>{ load(); }, []);
+
+  const remove = async (id) => {
+    await supabase.from("family_members").delete().eq("id", id);
+    ctx.showToast("Family member removed");
+    load();
+  };
+
+  return (
+    <div className="mq-fade-in">
+      <TopBar title="Family Members" onBack={onBack} />
+      <div style={{padding:16}}>
+        {members===null ? <LoadingState /> : members.length===0 ? (
+          <EmptyState icon={Users} title="No family members added" subtitle="Add them here so you can quickly book appointments on their behalf." />
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+            {members.map(m=>(
+              <Card key={m.id} style={{display:"flex",alignItems:"center",gap:10}}>
+                <Avatar name={m.name} size={40} />
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:13.5}}>{m.name}</div>
+                  <div style={{fontSize:11.5,color:COLORS.muted}}>{m.relation}{m.age?` · ${m.age} yrs`:""}{m.gender?` · ${m.gender}`:""}</div>
+                </div>
+                <button onClick={()=>remove(m.id)} style={{background:"none",border:"none",cursor:"pointer"}}><Trash2 size={16} color={COLORS.danger} /></button>
+              </Card>
+            ))}
+          </div>
+        )}
+        <Btn full icon={Plus} onClick={()=>setShowAdd(true)}>Add Family Member</Btn>
+      </div>
+      {showAdd && <AddFamilyMemberModal patient={patient} onClose={()=>setShowAdd(false)} onAdded={()=>{ setShowAdd(false); load(); }} />}
+    </div>
+  );
+}
+
+
 function ReviewModal({ open, onClose, ctx, appt, patient }){
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
+  const [saving, setSaving] = useState(false);
   if (!open) return null;
-  const submit = () => {
-    const rev = { id: uid("rev"), doctorId: appt.doctorId, patientId: patient.id, appointmentId: appt.id, rating, comment: comment||"Good experience overall.", date: fmtDate(new Date()) };
-    ctx.updateReviews(prev => [...prev, rev]);
-    ctx.updateDoctors(prev => prev.map(d => {
-      if (d.id!==appt.doctorId) return d;
-      const newCount = d.reviewCount+1;
-      const newRating = round1(((d.rating*d.reviewCount)+rating)/newCount);
-      return { ...d, reviewCount:newCount, rating:newRating };
-    }));
-    ctx.showToast("Thanks for your feedback!");
-    onClose();
+  const submit = async () => {
+    const finalComment = comment || "Good experience overall.";
+    if (appt.isDemo) {
+      const rev = { id: uid("rev"), doctorId: appt.doctorId, patientId: patient.id, appointmentId: appt.id, rating, comment: finalComment, date: fmtDate(new Date()), isDemo:true };
+      ctx.updateReviews(prev => [...prev, rev]);
+      ctx.updateDoctors(prev => prev.map(d => {
+        if (d.id!==appt.doctorId) return d;
+        const newCount = d.reviewCount+1;
+        const newRating = round1(((d.rating*d.reviewCount)+rating)/newCount);
+        return { ...d, reviewCount:newCount, rating:newRating };
+      }));
+      ctx.showToast("Thanks for your feedback!");
+      onClose();
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await supabase.from("reviews").insert({
+        doctor_id: appt.doctorId, patient_id: patient.id, appointment_id: appt.id, rating, comment: finalComment
+      });
+      if (error) throw error;
+      await ctx.refreshRealReviews();
+      ctx.showToast("Thanks for your feedback!");
+      onClose();
+    } catch (e) {
+      ctx.showToast("Could not submit review","danger");
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <Modal open={open} onClose={onClose} title="Rate your visit">
@@ -1726,7 +2007,7 @@ function ReviewModal({ open, onClose, ctx, appt, patient }){
         ))}
       </div>
       <Field label="Your feedback"><TextArea value={comment} onChange={e=>setComment(e.target.value)} placeholder="Share your experience..." /></Field>
-      <Btn full size="lg" icon={ThumbsUp} onClick={submit}>Submit Review</Btn>
+      <Btn full size="lg" icon={ThumbsUp} onClick={submit} disabled={saving}>{saving ? "Submitting..." : "Submit Review"}</Btn>
     </Modal>
   );
 }
@@ -1765,7 +2046,7 @@ function PatientNotifications({ ctx, patient }){
 }
 
 /* ---------- Patient Profile ---------- */
-function PatientProfile({ ctx, patient, onOpenDoctor }){
+function PatientProfile({ ctx, patient, onOpenDoctor, onOpenFamily }){
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(patient);
   const favDoctors = ctx.doctors.filter(d=>patient.favorites?.includes(d.id));
@@ -1797,6 +2078,17 @@ function PatientProfile({ ctx, patient, onOpenDoctor }){
             <div><div style={{fontWeight:800,fontSize:17}}>{completed}</div><div style={{fontSize:11,color:COLORS.muted}}>Completed</div></div>
             <div><div style={{fontWeight:800,fontSize:17}}>{favDoctors.length}</div><div style={{fontSize:11,color:COLORS.muted}}>Favourites</div></div>
           </div>
+        </Card>
+
+        <Card hover onClick={onOpenFamily} style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+          <div style={{width:40,height:40,borderRadius:12,background:COLORS.primarySoft,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <Users size={19} color={COLORS.primary} />
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:13.5}}>Family Members</div>
+            <div style={{fontSize:11.5,color:COLORS.muted}}>Manage who you can book appointments for</div>
+          </div>
+          <ChevronRight size={18} color={COLORS.muted} />
         </Card>
 
         <SectionHeader title="Personal Information" action={<button className="mq-btn" onClick={()=>editing?save():setEditing(true)} style={{background:"none",color:COLORS.primary,fontWeight:700,fontSize:12.5,display:"flex",alignItems:"center",gap:4}}>{editing?<><Check size={14}/>Save</>:<><Pencil size={13}/>Edit</>}</button>} />
@@ -1998,6 +2290,7 @@ function DoctorAppointments({ ctx, doctor }){
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [rescheduleAppt, setRescheduleAppt] = useState(null);
+  const [prescriptionAppt, setPrescriptionAppt] = useState(null);
   const mine = ctx.appointments.filter(a=>a.doctorId===doctor.id).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
   const todayStr = fmtDate(new Date());
 
@@ -2064,6 +2357,7 @@ function DoctorAppointments({ ctx, doctor }){
                     <Btn size="sm" variant="dangerOutline" onClick={()=>setStatus(a,"cancelled")}>Cancel</Btn>
                   </>}
                   {a.status==="arrived" && <Btn size="sm" onClick={()=>setStatus(a,"completed")}>Mark Completed</Btn>}
+                  {a.status==="completed" && !a.isDemo && <Btn size="sm" variant="outline" icon={FileText} onClick={()=>setPrescriptionAppt(a)}>Prescription</Btn>}
                 </div>
               </Card>
             ))}
@@ -2071,6 +2365,7 @@ function DoctorAppointments({ ctx, doctor }){
         )}
       </div>
       <DoctorRescheduleModal open={!!rescheduleAppt} onClose={()=>setRescheduleAppt(null)} ctx={ctx} appt={rescheduleAppt} doctor={doctor} />
+      {prescriptionAppt && <PrescriptionModal appt={prescriptionAppt} ctx={ctx} onClose={()=>setPrescriptionAppt(null)} canUpload={true} />}
     </div>
   );
 }
