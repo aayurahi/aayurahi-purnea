@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { User, Stethoscope, ShieldCheck, Mail, Phone, ChevronRight, ArrowLeft, Loader2, CheckCircle2, Upload } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { COLORS, AayuRahiLogoMark } from "./App";
+import { COLORS, AayuRahiLogoMark, useAppBackButton, t } from "./App";
 
 /* ============================================================================
    REAL AUTH — email/password + phone OTP, backed by Supabase Auth.
@@ -54,6 +54,14 @@ function ErrorMsg({ msg }) {
 export default function Auth({ onAuthed }) {
   const [screen, setScreen] = useState("landing"); // landing | email | phone | doctorApply | pendingDoctor
   const [pendingProfile, setPendingProfile] = useState(null);
+  const [lang, setLang] = useState(() => localStorage.getItem("mq_lang") || "en");
+  useAppBackButton(screen, "landing", () => setScreen("landing"));
+
+  const toggleLang = () => {
+    const next = lang === "en" ? "hi" : "en";
+    setLang(next);
+    localStorage.setItem("mq_lang", next);
+  };
 
   if (screen === "email") return <EmailAuth onBack={() => setScreen("landing")} onAuthed={onAuthed} onNeedsDoctorApply={(p) => { setPendingProfile(p); setScreen("doctorApply"); }} />;
   if (screen === "phone") return <PhoneAuth onBack={() => setScreen("landing")} onAuthed={onAuthed} onNeedsDoctorApply={(p) => { setPendingProfile(p); setScreen("doctorApply"); }} />;
@@ -61,13 +69,18 @@ export default function Auth({ onAuthed }) {
   if (screen === "pendingDoctor") return <PendingDoctorScreen onContinueAsPatient={() => onAuthed(pendingProfile)} />;
 
   return (
-    <Shell title="Welcome to AayuRahi">
+    <Shell title={t("welcomeTitle", lang)}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <ChoiceCard icon={Mail} title="Continue with Email" subtitle="Sign up or log in with email + password" onClick={() => setScreen("email")} />
-        <ChoiceCard icon={Phone} title="Continue with Phone" subtitle="Log in instantly with an OTP code" onClick={() => setScreen("phone")} />
+        <ChoiceCard icon={Mail} title={t("continueWithEmail", lang)} subtitle="Sign up or log in with email + password" onClick={() => setScreen("email")} />
+        <ChoiceCard icon={Phone} title={t("continueWithPhone", lang)} subtitle="Log in instantly with an OTP code" onClick={() => setScreen("phone")} />
       </div>
       <div style={{ textAlign: "center", fontSize: 12, color: COLORS.muted, marginTop: 22 }}>
-        New accounts always start as a Patient.<br />Doctor access requires admin approval.
+        {t("newAccountsNote", lang)}
+      </div>
+      <div style={{ textAlign: "center", marginTop: 18 }}>
+        <button onClick={toggleLang} style={{ background: "none", border: "none", color: COLORS.primary, fontWeight: 700, fontSize: 13, textDecoration: "underline", cursor: "pointer" }}>
+          {lang === "en" ? "हिंदी" : "English"}
+        </button>
       </div>
     </Shell>
   );

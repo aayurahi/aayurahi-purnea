@@ -126,6 +126,135 @@ function timeAgo(iso){
 /* ============================================================================
    SEED DATA GENERATION
 ============================================================================ */
+// Makes the phone/browser "Back" button navigate within the app (closing the
+// current screen) instead of leaving the site entirely. Call with the current
+// screen name, the "home" screen name for this tab/section, and the setter to
+// return to that home screen.
+export function useAppBackButton(currentKey, rootKey, goToRoot) {
+  useEffect(() => {
+    if (currentKey !== rootKey) {
+      window.history.pushState({ mqNav: true }, "");
+    }
+  }, [currentKey, rootKey]);
+
+  useEffect(() => {
+    const handler = () => { goToRoot(); };
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
+  }, [goToRoot]);
+}
+
+// Lightweight translation dictionary for patient-facing text. `t(key, lang)`
+// falls back to English if a key is missing in the requested language.
+export const TRANSLATIONS = {
+  en: {
+    home:"Home", search:"Search", appointments:"Appointments", chats:"Chats", alerts:"Alerts", profile:"Profile",
+    browseBySpecialty:"Browse by Specialty", topRatedDoctors:"Top Rated Doctors", verifiedDoctorsNearby:"verified doctors nearby",
+    searchPlaceholder:"Search doctors, specialties, clinics...", searchPlaceholder2:"Search doctors, specialty, area...",
+    myAppointments:"My Appointments", upcoming:"Upcoming", history:"History", noAppointments:"No appointments yet",
+    bookAppointment:"Book Appointment", confirmBooking:"Confirm Booking", whoIsThisVisitFor:"Who is this visit for?",
+    myself:"Myself", addFamilyMember:"+ Add Family Member", patientDetails:"Patient details",
+    fullName:"Full name", phoneNumber:"Phone number", age:"Age", gender:"Gender", reasonForVisit:"Reason for visit",
+    bookingSummary:"Booking Summary", date:"Date", time:"Time", type:"Type", consultationFee:"Consultation fee",
+    rateReview:"Rate & Review", submitReview:"Submit Review", yourFeedback:"Your feedback", rateYourVisit:"Rate your visit",
+    cancelAppointment:"Cancel Appointment", reschedule:"Reschedule", cancel:"Cancel", viewPrescription:"View Prescription",
+    myChats:"My Chats", requestChat:"Request Chat", startAChat:"Start a Chat", noChatsYet:"No chats yet",
+    language:"Language", noDoctorsFound:"No doctors found", familyMembers:"Family Members",
+    continueWithEmail:"Continue with Email", continueWithPhone:"Continue with Phone",
+    welcomeTitle:"Welcome to AayuRahi", newAccountsNote:"New accounts always start as a Patient.",
+    experience:"Experience", fee:"Fee", slot:"Slot", about:"About", clinicAndTimings:"Clinic & Timings",
+    workingDays:"Working days", getDirections:"Get Directions", patientReviews:"Patient Reviews",
+    reviewsWord:"reviews", noReviewsYet:"No reviews yet.", yrs:"yrs", min:"min",
+    availableToday:"Available Today", limitedAvailability:"Limited availability", available:"Available",
+    doctorsFound:"doctors found", all:"All", filters:"Filters",
+    notifications:"Notifications", noNotificationsYet:"No notifications yet",
+    notifSubtitle:"Booking updates and queue alerts will show up here",
+    doctorProfile:"Doctor Profile", reason:"Reason", patient:"Patient", yourReview:"Your review",
+    personalInformation:"Personal Information", name:"Name", email:"Email", dateOfBirth:"Date of birth",
+    notSet:"Not set", favouriteDoctors:"Favourite Doctors", noFavouritesYet:"No favourites yet",
+    favSubtitle:"Tap the heart icon on a doctor's profile to save them here",
+    appointmentsStat:"Appointments", completedStat:"Completed", favouritesStat:"Favourites",
+    messages:"Messages", startAChatSection:"START A CHAT", myChatsSection:"MY CHATS",
+    noChatsSubtitle:"Chats become available for 10 days after a completed appointment.",
+    waitingForDoctor:"Waiting for the doctor to accept this chat request.",
+    chatDeclinedMsg:"This chat request was declined.",
+    chatEndedMsg:"This chat has ended (10-day window closed). You can still view the history below.",
+    typeMessage:"Type a message...", canSendOnceAccepted:"You can send messages once the doctor accepts.",
+    readOnlyConversation:"This conversation is read-only.",
+    doctorWord:"Doctor", patientWord:"Patient", pending:"Pending", declined:"Declined", expired:"Expired", active:"Active",
+    noFamilyMembers:"No family members added", familyMemberSubtitle:"Add them here so you can quickly book appointments on their behalf.",
+    addFamilyMemberBtn:"Add Family Member", familyMemberRemoved:"Family member removed",
+    statusPending:"pending", statusConfirmed:"confirmed", statusCompleted:"completed", statusCancelled:"cancelled",
+    statusRejected:"rejected", statusArrived:"arrived",
+    inClinic:"In-Clinic", videoConsult:"Video Consult",
+    confirmCancelText:"Are you sure you want to cancel this appointment with {name}? This action cannot be undone.",
+    keepIt:"Keep it", yesCancel:"Yes, cancel", rescheduleAppointment:"Reschedule Appointment",
+    newDate:"New date", newTimeSlot:"New time slot", selectNewTimeSlot:"Select a new time slot",
+    appointmentRescheduled:"Appointment rescheduled", confirm:"Confirm",
+  },
+  hi: {
+    home:"होम", search:"खोजें", appointments:"अपॉइंटमेंट", chats:"चैट", alerts:"सूचनाएं", profile:"प्रोफाइल",
+    browseBySpecialty:"विशेषज्ञता अनुसार खोजें", topRatedDoctors:"शीर्ष रेटेड डॉक्टर", verifiedDoctorsNearby:"सत्यापित डॉक्टर पास में",
+    searchPlaceholder:"डॉक्टर, विशेषज्ञता, क्लिनिक खोजें...", searchPlaceholder2:"डॉक्टर, विशेषज्ञता, क्षेत्र खोजें...",
+    myAppointments:"मेरी अपॉइंटमेंट", upcoming:"आगामी", history:"इतिहास", noAppointments:"अभी तक कोई अपॉइंटमेंट नहीं",
+    bookAppointment:"अपॉइंटमेंट बुक करें", confirmBooking:"बुकिंग की पुष्टि करें", whoIsThisVisitFor:"यह विज़िट किसके लिए है?",
+    myself:"स्वयं", addFamilyMember:"+ परिवार का सदस्य जोड़ें", patientDetails:"मरीज़ का विवरण",
+    fullName:"पूरा नाम", phoneNumber:"फ़ोन नंबर", age:"उम्र", gender:"लिंग", reasonForVisit:"आने का कारण",
+    bookingSummary:"बुकिंग सारांश", date:"तारीख", time:"समय", type:"प्रकार", consultationFee:"परामर्श शुल्क",
+    rateReview:"रेट करें और समीक्षा दें", submitReview:"समीक्षा सबमिट करें", yourFeedback:"आपकी प्रतिक्रिया", rateYourVisit:"अपनी विज़िट को रेट करें",
+    cancelAppointment:"अपॉइंटमेंट रद्द करें", reschedule:"पुनर्निर्धारित करें", cancel:"रद्द करें", viewPrescription:"पर्ची देखें",
+    myChats:"मेरी चैट", requestChat:"चैट का अनुरोध करें", startAChat:"चैट शुरू करें", noChatsYet:"अभी तक कोई चैट नहीं",
+    language:"भाषा", noDoctorsFound:"कोई डॉक्टर नहीं मिला", familyMembers:"परिवार के सदस्य",
+    continueWithEmail:"ईमेल से जारी रखें", continueWithPhone:"फ़ोन से जारी रखें",
+    welcomeTitle:"आयुरही में आपका स्वागत है", newAccountsNote:"नए खाते हमेशा मरीज़ के रूप में शुरू होते हैं।",
+    experience:"अनुभव", fee:"शुल्क", slot:"स्लॉट", about:"परिचय", clinicAndTimings:"क्लिनिक और समय",
+    workingDays:"कार्य दिवस", getDirections:"दिशा-निर्देश पाएं", patientReviews:"मरीज़ों की समीक्षा",
+    reviewsWord:"समीक्षाएं", noReviewsYet:"अभी तक कोई समीक्षा नहीं।", yrs:"वर्ष", min:"मिनट",
+    availableToday:"आज उपलब्ध", limitedAvailability:"सीमित उपलब्धता", available:"उपलब्ध",
+    doctorsFound:"डॉक्टर मिले", all:"सभी", filters:"फ़िल्टर",
+    notifications:"सूचनाएं", noNotificationsYet:"अभी तक कोई सूचना नहीं",
+    notifSubtitle:"बुकिंग अपडेट और कतार अलर्ट यहां दिखाई देंगे",
+    doctorProfile:"डॉक्टर प्रोफाइल", reason:"कारण", patient:"मरीज़", yourReview:"आपकी समीक्षा",
+    personalInformation:"व्यक्तिगत जानकारी", name:"नाम", email:"ईमेल", dateOfBirth:"जन्म तिथि",
+    notSet:"सेट नहीं है", favouriteDoctors:"पसंदीदा डॉक्टर", noFavouritesYet:"अभी तक कोई पसंदीदा नहीं",
+    favSubtitle:"डॉक्टर की प्रोफाइल पर दिल के आइकन को टैप करके यहां सेव करें",
+    appointmentsStat:"अपॉइंटमेंट", completedStat:"पूर्ण", favouritesStat:"पसंदीदा",
+    messages:"मैसेज", startAChatSection:"चैट शुरू करें", myChatsSection:"मेरी चैट",
+    noChatsSubtitle:"पूर्ण अपॉइंटमेंट के बाद 10 दिनों के लिए चैट उपलब्ध होती है।",
+    waitingForDoctor:"डॉक्टर के इस चैट अनुरोध को स्वीकार करने की प्रतीक्षा है।",
+    chatDeclinedMsg:"इस चैट अनुरोध को अस्वीकार कर दिया गया था।",
+    chatEndedMsg:"यह चैट समाप्त हो गई है (10-दिन की अवधि बंद)। आप नीचे इतिहास देख सकते हैं।",
+    typeMessage:"संदेश लिखें...", canSendOnceAccepted:"डॉक्टर के स्वीकार करने के बाद ही आप संदेश भेज सकते हैं।",
+    readOnlyConversation:"यह बातचीत केवल पढ़ने के लिए है।",
+    doctorWord:"डॉक्टर", patientWord:"मरीज़", pending:"लंबित", declined:"अस्वीकृत", expired:"समाप्त", active:"सक्रिय",
+    noFamilyMembers:"कोई परिवार का सदस्य नहीं जोड़ा गया", familyMemberSubtitle:"उनकी ओर से जल्दी अपॉइंटमेंट बुक करने के लिए यहां जोड़ें।",
+    addFamilyMemberBtn:"परिवार का सदस्य जोड़ें", familyMemberRemoved:"परिवार का सदस्य हटाया गया",
+    statusPending:"लंबित", statusConfirmed:"पुष्ट", statusCompleted:"पूर्ण", statusCancelled:"रद्द",
+    statusRejected:"अस्वीकृत", statusArrived:"पहुंच गए",
+    inClinic:"क्लिनिक में", videoConsult:"वीडियो परामर्श",
+    confirmCancelText:"क्या आप वाकई {name} के साथ इस अपॉइंटमेंट को रद्द करना चाहते हैं? यह क्रिया वापस नहीं ली जा सकती।",
+    keepIt:"रहने दें", yesCancel:"हां, रद्द करें", rescheduleAppointment:"अपॉइंटमेंट पुनर्निर्धारित करें",
+    newDate:"नई तारीख", newTimeSlot:"नया समय स्लॉट", selectNewTimeSlot:"नया समय स्लॉट चुनें",
+    appointmentRescheduled:"अपॉइंटमेंट पुनर्निर्धारित", confirm:"पुष्टि करें",
+  },
+};
+export function t(key, lang){ return TRANSLATIONS[lang]?.[key] || TRANSLATIONS.en[key] || key; }
+
+const SPECIALTY_HI = {
+  "General Physician": "जनरल फिजिशियन", "Cardiologist": "हृदय रोग विशेषज्ञ", "Dermatologist": "त्वचा रोग विशेषज्ञ",
+  "Pediatrician": "बाल रोग विशेषज्ञ", "Orthopedic": "हड्डी रोग विशेषज्ञ", "Gynecologist": "स्त्री रोग विशेषज्ञ",
+  "ENT Specialist": "ईएनटी विशेषज्ञ", "Neurologist": "न्यूरोलॉजिस्ट", "Dentist": "दंत चिकित्सक",
+  "Psychiatrist": "मनोचिकित्सक", "Ophthalmologist": "नेत्र रोग विशेषज्ञ", "Urologist": "यूरोलॉजिस्ट",
+  "Gastroenterologist": "गैस्ट्रोएंटेरोलॉजिस्ट", "Endocrinologist": "एंडोक्राइनोलॉजिस्ट", "Pulmonologist": "फेफड़ा रोग विशेषज्ञ",
+};
+export function translateSpecialty(name, lang){ return lang==="hi" ? (SPECIALTY_HI[name]||name) : name; }
+
+const STATUS_HI = { pending:"लंबित", confirmed:"पुष्ट", arrived:"पहुंच गए", completed:"पूर्ण", cancelled:"रद्द", rejected:"अस्वीकृत" };
+export function translateStatus(s, lang){ return lang==="hi" ? (STATUS_HI[s]||s) : s; }
+
+const DAY_HI = { Sun:"रवि", Mon:"सोम", Tue:"मंगल", Wed:"बुध", Thu:"गुरु", Fri:"शुक्र", Sat:"शनि" };
+export function translateDay(d, lang){ return lang==="hi" ? (DAY_HI[d]||d) : d; }
+
 function generateDoctors(count, opts={}){
   const { demo=false } = opts;
   const docs = [];
@@ -620,6 +749,7 @@ export default function App(){
   const loadRealSession = async (userId) => {
     const { data: profile } = await supabase.from("profiles").select("*").eq("id", userId).single();
     if (!profile) return;
+    setLanguage(profile.language || "en");
     if (profile.role === "doctor") {
       const { data: doc } = await supabase.from("doctors").select("verified").eq("profile_id", userId).maybeSingle();
       setSession({ role: "doctor", id: profile.id, verified: !!doc?.verified, full_name: profile.full_name, avatar_url: profile.avatar_url });
@@ -695,6 +825,16 @@ export default function App(){
 
   // Unread chat message count — lives at the top level so it can be refreshed
   // from anywhere (e.g. right after a conversation marks its messages as read).
+  // Language preference — persisted to the real account so it follows the
+  // person across devices; defaults to English until their profile loads.
+  const [language, setLanguageState] = useState("en");
+  const setLanguage = async (lang) => {
+    setLanguageState(lang);
+    if (session) {
+      try { await supabase.from("profiles").update({ language: lang }).eq("id", session.id); } catch(e){}
+    }
+  };
+
   const [unreadChats, setUnreadChats] = useState(0);
   const refreshUnreadChats = async () => {
     if (!session) { setUnreadChats(0); return; }
@@ -741,7 +881,7 @@ export default function App(){
     doctors, patients, appointments, reviews, notifications, specialties,
     updateDoctors, updatePatients, updateAppointments, updateReviews, updateNotifications, updateSpecialties,
     showToast, session, login, logout, refreshRealDoctors, uploadAvatar, syncAppt, refreshRealAppointments,
-    unreadChats, refreshUnreadChats, refreshRealReviews
+    unreadChats, refreshUnreadChats, refreshRealReviews, language, setLanguage
   };
 
   if (!booted) {
@@ -1002,14 +1142,16 @@ function PatientApp({ ctx }){
   const unread = myNotifs.filter(n=>!n.read).length;
 
   const goTab = (t) => { setTab(t); setView({name:t}); };
+  const goToRoot = useCallback(() => setView({name:tab}), [tab]);
+  useAppBackButton(view.name, tab, goToRoot);
 
   const navItems = [
-    { key:"home", label:"Home", icon:HomeIcon },
-    { key:"search", label:"Search", icon:Search },
-    { key:"appointments", label:"Appointments", icon:CalendarClock },
-    { key:"messages", label:"Chats", icon:MessageCircle, badge: ctx.unreadChats },
-    { key:"notifications", label:"Alerts", icon:Bell, badge: unread },
-    { key:"profile", label:"Profile", icon:User },
+    { key:"home", label:t("home",ctx.language), icon:HomeIcon },
+    { key:"search", label:t("search",ctx.language), icon:Search },
+    { key:"appointments", label:t("appointments",ctx.language), icon:CalendarClock },
+    { key:"messages", label:t("chats",ctx.language), icon:MessageCircle, badge: ctx.unreadChats },
+    { key:"notifications", label:t("alerts",ctx.language), icon:Bell, badge: unread },
+    { key:"profile", label:t("profile",ctx.language), icon:User },
   ];
 
   if (!patient) return <LoadingState />;
@@ -1045,32 +1187,32 @@ function PatientHome({ ctx, patient, onOpenDoctor, goSearch }){
       <div style={{padding:"20px 16px 16px",background:`linear-gradient(180deg, ${COLORS.primarySoft}, ${COLORS.bg})`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <div>
-            <div style={{fontSize:12.5,color:COLORS.muted,fontWeight:600}}>Hello,</div>
+            <div style={{fontSize:12.5,color:COLORS.muted,fontWeight:600}}>{ctx.language==="hi"?"नमस्ते,":"Hello,"}</div>
             <div className="mq-display" style={{fontSize:19,fontWeight:800}}>{patient.name.split(" ")[0]} 👋</div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:6,color:COLORS.muted,fontSize:12.5,fontWeight:600}}><MapPin size={14}/> {CITY}</div>
         </div>
         <div style={{position:"relative"}}>
           <Search size={18} style={{position:"absolute",left:14,top:14,color:COLORS.muted}} />
-          <input className="mq-input" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder="Search doctors, specialties, clinics..."
+          <input className="mq-input" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder={t("searchPlaceholder",ctx.language)}
             style={{...inputStyle, paddingLeft:42, borderRadius:16, boxShadow:"0 4px 14px rgba(15,27,45,0.06)"}} />
         </div>
       </div>
 
       <div style={{padding:"18px 16px"}}>
-        <SectionHeader title="Browse by Specialty" />
+        <SectionHeader title={t("browseBySpecialty",ctx.language)} />
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:22}}>
           {SPECIALTIES.slice(0,8).map(s => (
             <button key={s.name} className="mq-btn" onClick={()=>goSearch(s.name)} style={{background:"#fff",border:`1px solid ${COLORS.border}`,borderRadius:16,padding:"12px 4px",display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
               <div style={{width:36,height:36,borderRadius:10,background:COLORS.primarySoft,display:"flex",alignItems:"center",justifyContent:"center"}}><s.icon size={17} color={COLORS.primary} /></div>
-              <span style={{fontSize:10.5,fontWeight:700,textAlign:"center",lineHeight:1.2}}>{s.name.replace(" Specialist","")}</span>
+              <span style={{fontSize:10.5,fontWeight:700,textAlign:"center",lineHeight:1.2}}>{translateSpecialty(s.name,ctx.language).replace(" Specialist","")}</span>
             </button>
           ))}
         </div>
 
-        <SectionHeader title="Top Rated Doctors" subtitle={`${approved.length} verified doctors nearby`} />
+        <SectionHeader title={t("topRatedDoctors",ctx.language)} subtitle={`${approved.length} ${t("verifiedDoctorsNearby",ctx.language)}`} />
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {featured.map(d => <DoctorCard key={d.id} doctor={d} onClick={()=>onOpenDoctor(d)} />)}
+          {featured.map(d => <DoctorCard key={d.id} doctor={d} onClick={()=>onOpenDoctor(d)} lang={ctx.language} />)}
         </div>
       </div>
     </div>
@@ -1088,8 +1230,8 @@ function SectionHeader({ title, subtitle, action }){
   );
 }
 
-function DoctorCard({ doctor, onClick, onFav, isFav }){
-  const nextSlotInfo = getNextAvailableLabel(doctor);
+function DoctorCard({ doctor, onClick, onFav, isFav, lang="en" }){
+  const nextSlotInfo = getNextAvailableLabel(doctor, lang);
   return (
     <Card hover onClick={onClick} style={{display:"flex",gap:12}}>
       <Avatar src={doctor.photo} name={doctor.name} size={64} />
@@ -1097,7 +1239,7 @@ function DoctorCard({ doctor, onClick, onFav, isFav }){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:6}}>
           <div style={{minWidth:0}}>
             <div style={{fontWeight:800,fontSize:14.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{doctor.name}</div>
-            <div style={{fontSize:12.5,color:COLORS.primary,fontWeight:700}}>{doctor.specialization}</div>
+            <div style={{fontSize:12.5,color:COLORS.primary,fontWeight:700}}>{translateSpecialty(doctor.specialization,lang)}</div>
           </div>
           {onFav && (
             <button className="mq-btn" onClick={(e)=>{e.stopPropagation(); onFav();}} style={{background:"none",flexShrink:0}}>
@@ -1106,7 +1248,7 @@ function DoctorCard({ doctor, onClick, onFav, isFav }){
           )}
         </div>
         <div style={{fontSize:12,color:COLORS.muted,marginTop:4,display:"flex",gap:10,flexWrap:"wrap"}}>
-          <span style={{display:"flex",alignItems:"center",gap:3}}><Briefcase size={11}/> {doctor.experience} yrs</span>
+          <span style={{display:"flex",alignItems:"center",gap:3}}><Briefcase size={11}/> {doctor.experience} {t("yrs",lang)}</span>
           <span style={{display:"flex",alignItems:"center",gap:3}}><MapPin size={11}/> {doctor.area}</span>
         </div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:9}}>
@@ -1122,18 +1264,18 @@ function DoctorCard({ doctor, onClick, onFav, isFav }){
   );
 }
 
-function getNextAvailableLabel(doctor){
+function getNextAvailableLabel(doctor, lang="en"){
   if (doctor.blockedDates?.includes(fmtDate(new Date())) === false && doctor.workingDays.includes(dayOfWeek(fmtDate(new Date())))){
-    return { label: "Available Today", tone: "success" };
+    return { label: t("availableToday",lang), tone: "success" };
   }
   for (let i=1;i<7;i++){
     const d = new Date(); d.setDate(d.getDate()+i);
     const ds = fmtDate(d);
     if (doctor.workingDays.includes(dayOfWeek(ds)) && !doctor.blockedDates?.includes(ds)){
-      return { label: `Available ${fmtDateLabel(ds)}`, tone:"primary" };
+      return { label: `${t("available",lang)} ${fmtDateLabel(ds)}`, tone:"primary" };
     }
   }
-  return { label:"Limited availability", tone:"warning" };
+  return { label:t("limitedAvailability",lang), tone:"warning" };
 }
 
 /* ---------- Patient Search ---------- */
@@ -1170,7 +1312,7 @@ function PatientSearch({ ctx, initialQuery="", onOpenDoctor }){
         <div style={{display:"flex",gap:8}}>
           <div style={{position:"relative",flex:1}}>
             <Search size={17} style={{position:"absolute",left:13,top:12,color:COLORS.muted}} />
-            <TextInput value={q} onChange={e=>setQ(e.target.value)} placeholder="Search doctors, specialty, area..." style={{paddingLeft:38}} />
+            <TextInput value={q} onChange={e=>setQ(e.target.value)} placeholder={t("searchPlaceholder2",ctx.language)} style={{paddingLeft:38}} />
           </div>
           <button className="mq-btn" onClick={()=>setShowFilters(true)} style={{background:COLORS.primarySoft,borderRadius:12,width:44,display:"flex",alignItems:"center",justifyContent:"center"}}>
             <Filter size={18} color={COLORS.primary} />
@@ -1178,17 +1320,17 @@ function PatientSearch({ ctx, initialQuery="", onOpenDoctor }){
         </div>
         <div className="mq-scroll" style={{display:"flex",gap:7,overflowX:"auto",marginTop:10,paddingBottom:2}}>
           {["All",...SPECIALTIES.map(s=>s.name)].map(s => (
-            <button key={s} className="mq-btn" onClick={()=>setSpec(s)} style={{whiteSpace:"nowrap",background:spec===s?COLORS.primary:"#F1F5F9",color:spec===s?"#fff":COLORS.text,borderRadius:20,padding:"7px 13px",fontSize:12.5,fontWeight:700}}>{s}</button>
+            <button key={s} className="mq-btn" onClick={()=>setSpec(s)} style={{whiteSpace:"nowrap",background:spec===s?COLORS.primary:"#F1F5F9",color:spec===s?"#fff":COLORS.text,borderRadius:20,padding:"7px 13px",fontSize:12.5,fontWeight:700}}>{s==="All"?t("all",ctx.language):translateSpecialty(s,ctx.language)}</button>
           ))}
         </div>
       </div>
       <div style={{padding:16}}>
-        <div style={{fontSize:12.5,color:COLORS.muted,fontWeight:700,marginBottom:10}}>{results.length} doctors found</div>
+        <div style={{fontSize:12.5,color:COLORS.muted,fontWeight:700,marginBottom:10}}>{results.length} {t("doctorsFound",ctx.language)}</div>
         {results.length===0 ? (
-          <EmptyState icon={Search} title="No doctors found" subtitle="Try adjusting your filters or search terms" action={<Btn variant="outline" onClick={()=>{setSpec("All");setArea("All");setMaxFee(3000);setMinExp(0);setMinRating(0);setQ("");}}>Clear filters</Btn>} />
+          <EmptyState icon={Search} title={t("noDoctorsFound",ctx.language)} subtitle="Try adjusting your filters or search terms" action={<Btn variant="outline" onClick={()=>{setSpec("All");setArea("All");setMaxFee(3000);setMinExp(0);setMinRating(0);setQ("");}}>Clear filters</Btn>} />
         ) : (
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            {results.map(d => <DoctorCard key={d.id} doctor={d} onClick={()=>onOpenDoctor(d)} />)}
+            {results.map(d => <DoctorCard key={d.id} doctor={d} onClick={()=>onOpenDoctor(d)} lang={ctx.language} />)}
           </div>
         )}
       </div>
@@ -1233,11 +1375,11 @@ function DoctorProfileView({ ctx, doctor, patient, onBack, onBook }){
     ctx.updatePatients(prev => prev.map(p => p.id===patient.id ? { ...p, favorites: isFav ? p.favorites.filter(id=>id!==doctor.id) : [...(p.favorites||[]), doctor.id] } : p));
     ctx.showToast(isFav?"Removed from favourites":"Added to favourites");
   };
-  const nextInfo = getNextAvailableLabel(doctor);
+  const nextInfo = getNextAvailableLabel(doctor, ctx.language);
 
   return (
     <div className="mq-fade-in">
-      <TopBar title="Doctor Profile" onBack={onBack} right={
+      <TopBar title={t("doctorProfile",ctx.language)} onBack={onBack} right={
         <button className="mq-btn" onClick={toggleFav} style={{background:"#F1F5F9",borderRadius:"50%",width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>
           <Heart size={16} color={isFav?COLORS.danger:COLORS.muted} fill={isFav?COLORS.danger:"none"} />
         </button>
@@ -1247,28 +1389,28 @@ function DoctorProfileView({ ctx, doctor, patient, onBack, onBook }){
           <Avatar src={doctor.photo} name={doctor.name} size={78} />
           <div style={{flex:1}}>
             <div style={{fontWeight:800,fontSize:17}}>{doctor.name}</div>
-            <div style={{color:COLORS.primary,fontWeight:700,fontSize:13}}>{doctor.specialization}</div>
+            <div style={{color:COLORS.primary,fontWeight:700,fontSize:13}}>{translateSpecialty(doctor.specialization,ctx.language)}</div>
             <div style={{fontSize:12.5,color:COLORS.muted,marginTop:3}}>{doctor.qualification}</div>
             <div style={{display:"flex",gap:10,marginTop:7,alignItems:"center"}}>
               <StarRow rating={doctor.rating} />
-              <span style={{fontSize:11.5,color:COLORS.muted}}>({doctor.reviewCount} reviews)</span>
+              <span style={{fontSize:11.5,color:COLORS.muted}}>({doctor.reviewCount} {t("reviewsWord",ctx.language)})</span>
             </div>
           </div>
         </Card>
 
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
-          <MiniStat icon={Briefcase} label="Experience" value={`${doctor.experience} yrs`} />
-          <MiniStat icon={IndianRupee} label="Fee" value={`₹${doctor.fee}`} />
-          <MiniStat icon={Clock} label="Slot" value={`${doctor.slotDuration} min`} />
+          <MiniStat icon={Briefcase} label={t("experience",ctx.language)} value={`${doctor.experience} ${t("yrs",ctx.language)}`} />
+          <MiniStat icon={IndianRupee} label={t("fee",ctx.language)} value={`₹${doctor.fee}`} />
+          <MiniStat icon={Clock} label={t("slot",ctx.language)} value={`${doctor.slotDuration} ${t("min",ctx.language)}`} />
         </div>
 
         <Card style={{marginBottom:14}}>
-          <SectionHeader title="About" />
+          <SectionHeader title={t("about",ctx.language)} />
           <div style={{fontSize:13.5,color:COLORS.muted,lineHeight:1.6}}>{doctor.about}</div>
         </Card>
 
         <Card style={{marginBottom:14}}>
-          <SectionHeader title="Clinic & Timings" />
+          <SectionHeader title={t("clinicAndTimings",ctx.language)} />
           <div style={{display:"flex",gap:10,marginBottom:8}}>
             <Building2 size={16} color={COLORS.muted} style={{marginTop:1,flexShrink:0}} />
             <div>
@@ -1280,7 +1422,7 @@ function DoctorProfileView({ ctx, doctor, patient, onBack, onBook }){
             <Clock size={16} color={COLORS.muted} style={{marginTop:1,flexShrink:0}} />
             <div style={{fontSize:12.5,color:COLORS.muted}}>
               {fmtTime12(doctor.startTime)} – {fmtTime12(doctor.endTime)} <br/>
-              Working days: {doctor.workingDays.map(d=>DAY_NAMES[d]).join(", ")}
+              {t("workingDays",ctx.language)}: {doctor.workingDays.map(d=>translateDay(DAY_NAMES[d],ctx.language)).join(", ")}
             </div>
           </div>
           <div style={{display:"flex",gap:10,marginBottom:4}}>
@@ -1302,19 +1444,19 @@ function DoctorProfileView({ ctx, doctor, patient, onBack, onBook }){
               ? `https://www.google.com/maps/dir/?api=1&destination=${doctor.clinicLat},${doctor.clinicLng}`
               : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${doctor.clinicName}, ${doctor.address}, ${doctor.area}, ${doctor.city}`)}`,
             "_blank")}>
-            Get Directions
+            {t("getDirections",ctx.language)}
           </Btn>
         </Card>
 
         <Card style={{marginBottom:14}}>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-            {doctor.consultTypes.map(t => <Badge key={t} tone="secondary">{t==="Video Consult"?<Video size={11}/>:<Building2 size={11}/>} {t}</Badge>)}
+            {doctor.consultTypes.map(ct => <Badge key={ct} tone="secondary">{ct==="Video Consult"?<Video size={11}/>:<Building2 size={11}/>} {ct==="Video Consult"?t("videoConsult",ctx.language):t("inClinic",ctx.language)}</Badge>)}
           </div>
         </Card>
 
         <Card style={{marginBottom:90}}>
-          <SectionHeader title="Patient Reviews" subtitle={`${docReviews.length} reviews`} />
-          {docReviews.length===0 ? <div style={{fontSize:13,color:COLORS.muted}}>No reviews yet.</div> : (
+          <SectionHeader title={t("patientReviews",ctx.language)} subtitle={`${docReviews.length} ${t("reviewsWord",ctx.language)}`} />
+          {docReviews.length===0 ? <div style={{fontSize:13,color:COLORS.muted}}>{t("noReviewsYet",ctx.language)}</div> : (
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               {docReviews.slice(0,6).map(r => (
                 <div key={r.id} style={{borderBottom:`1px solid ${COLORS.border}`,paddingBottom:10}}>
@@ -1335,7 +1477,7 @@ function DoctorProfileView({ ctx, doctor, patient, onBack, onBook }){
           <div style={{fontSize:11,color:COLORS.muted,fontWeight:600}}>{nextInfo.label}</div>
           <div style={{fontWeight:800,fontSize:16,display:"flex",alignItems:"center"}}><IndianRupee size={14}/>{doctor.fee}</div>
         </div>
-        <Btn size="lg" icon={Calendar} onClick={()=>onBook(doctor)}>Book Appointment</Btn>
+        <Btn size="lg" icon={Calendar} onClick={()=>onBook(doctor)}>{t("bookAppointment",ctx.language)}</Btn>
       </div>
     </div>
   );
@@ -1554,9 +1696,9 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
 
         {step===4 && (
           <div>
-            <SectionHeader title="Who is this visit for?" />
+            <SectionHeader title={t("whoIsThisVisitFor",ctx.language)} />
             <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
-              <button onClick={()=>chooseWhoFor(null)} style={{padding:"8px 14px",borderRadius:20,border:`1.5px solid ${!selectedFamilyId?COLORS.primary:COLORS.border}`,background:!selectedFamilyId?COLORS.primarySoft:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>Myself</button>
+              <button onClick={()=>chooseWhoFor(null)} style={{padding:"8px 14px",borderRadius:20,border:`1.5px solid ${!selectedFamilyId?COLORS.primary:COLORS.border}`,background:!selectedFamilyId?COLORS.primarySoft:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>{t("myself",ctx.language)}</button>
               {familyMembers.map(m=>(
                 <div key={m.id} style={{position:"relative"}}>
                   <button onClick={()=>chooseWhoFor(m)} style={{padding:"8px 22px 8px 14px",borderRadius:20,border:`1.5px solid ${selectedFamilyId===m.id?COLORS.primary:COLORS.border}`,background:selectedFamilyId===m.id?COLORS.primarySoft:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>{m.name} · {m.relation}</button>
@@ -1573,27 +1715,27 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
                   </button>
                 </div>
               ))}
-              <button onClick={()=>setShowAddFamily(true)} style={{padding:"8px 14px",borderRadius:20,border:`1.5px dashed ${COLORS.border}`,background:"#fff",fontWeight:700,fontSize:13,color:COLORS.primary,cursor:"pointer"}}>+ Add Family Member</button>
+              <button onClick={()=>setShowAddFamily(true)} style={{padding:"8px 14px",borderRadius:20,border:`1.5px dashed ${COLORS.border}`,background:"#fff",fontWeight:700,fontSize:13,color:COLORS.primary,cursor:"pointer"}}>{t("addFamilyMember",ctx.language)}</button>
             </div>
-            <SectionHeader title="Patient details" />
-            <Field label="Full name *"><TextInput value={form.name} onChange={e=>set("name",e.target.value)} /></Field>
-            <Field label="Phone number *"><TextInput value={form.phone} onChange={e=>set("phone",e.target.value.replace(/\D/g,"").slice(0,10))} /></Field>
+            <SectionHeader title={t("patientDetails",ctx.language)} />
+            <Field label={t("fullName",ctx.language)+" *"}><TextInput value={form.name} onChange={e=>set("name",e.target.value)} /></Field>
+            <Field label={t("phoneNumber",ctx.language)+" *"}><TextInput value={form.phone} onChange={e=>set("phone",e.target.value.replace(/\D/g,"").slice(0,10))} /></Field>
             <div style={{display:"flex",gap:10}}>
-              <Field label="Age *" style={{flex:1}}><TextInput type="number" value={form.age} onChange={e=>set("age",e.target.value)} placeholder="Age" /></Field>
-              <Field label="Gender" style={{flex:1}}>
+              <Field label={t("age",ctx.language)+" *"} style={{flex:1}}><TextInput type="number" value={form.age} onChange={e=>set("age",e.target.value)} placeholder="Age" /></Field>
+              <Field label={t("gender",ctx.language)} style={{flex:1}}>
                 <Select value={form.gender} onChange={e=>set("gender",e.target.value)}><option value="">Select</option><option>Male</option><option>Female</option><option>Other</option></Select>
               </Field>
             </div>
-            <Field label="Reason for visit"><TextArea value={form.reason} onChange={e=>set("reason",e.target.value)} placeholder="Briefly describe your symptoms or reason for consultation" /></Field>
+            <Field label={t("reasonForVisit",ctx.language)}><TextArea value={form.reason} onChange={e=>set("reason",e.target.value)} placeholder="Briefly describe your symptoms or reason for consultation" /></Field>
 
             <Card style={{marginTop:6, marginBottom:18}}>
-              <div style={{fontWeight:800,fontSize:13,marginBottom:8}}>Booking Summary</div>
-              <Row icon={Calendar} label="Date" value={fmtDateLabel(date)} />
-              <Row icon={Clock} label="Time" value={fmtTime12(time)} />
-              <Row icon={type==="Video Consult"?Video:Building2} label="Type" value={type} />
-              <Row icon={IndianRupee} label="Consultation fee" value={`₹${doctor.fee}`} />
+              <div style={{fontWeight:800,fontSize:13,marginBottom:8}}>{t("bookingSummary",ctx.language)}</div>
+              <Row icon={Calendar} label={t("date",ctx.language)} value={fmtDateLabel(date)} />
+              <Row icon={Clock} label={t("time",ctx.language)} value={fmtTime12(time)} />
+              <Row icon={type==="Video Consult"?Video:Building2} label={t("type",ctx.language)} value={type} />
+              <Row icon={IndianRupee} label={t("consultationFee",ctx.language)} value={`₹${doctor.fee}`} />
             </Card>
-            <Btn full size="lg" icon={CheckCircle2} onClick={confirmBooking} disabled={bookingLoading}>{bookingLoading ? "Booking..." : "Confirm Booking"}</Btn>
+            <Btn full size="lg" icon={CheckCircle2} onClick={confirmBooking} disabled={bookingLoading}>{bookingLoading ? "Booking..." : t("confirmBooking",ctx.language)}</Btn>
 
             {showAddFamily && (
               <AddFamilyMemberModal patient={patient} onClose={()=>setShowAddFamily(false)} onAdded={(member)=>{ setFamilyMembers(prev=>[...prev, member]); chooseWhoFor(member); setShowAddFamily(false); }} />
@@ -1623,14 +1765,14 @@ function PatientAppointments({ ctx, patient, onOpen, onBookAgain }){
 
   return (
     <div className="mq-fade-in">
-      <TopBar title="My Appointments" />
+      <TopBar title={t("myAppointments",ctx.language)} />
       <div style={{display:"flex",gap:8,padding:"14px 16px 0"}}>
-        <TabBtn active={tab==="upcoming"} onClick={()=>setTab("upcoming")} label={`Upcoming (${upcoming.length})`} />
-        <TabBtn active={tab==="history"} onClick={()=>setTab("history")} label="History" />
+        <TabBtn active={tab==="upcoming"} onClick={()=>setTab("upcoming")} label={`${t("upcoming",ctx.language)} (${upcoming.length})`} />
+        <TabBtn active={tab==="history"} onClick={()=>setTab("history")} label={t("history",ctx.language)} />
       </div>
       <div style={{padding:16}}>
         {list.length===0 ? (
-          <EmptyState icon={CalendarClock} title={tab==="upcoming"?"No upcoming appointments":"No past appointments"} subtitle={tab==="upcoming"?"Book an appointment to see it here":"Your appointment history will appear here"} />
+          <EmptyState icon={CalendarClock} title={t("noAppointments",ctx.language)} subtitle={tab==="upcoming"?(ctx.language==="hi"?"यहां देखने के लिए एक अपॉइंटमेंट बुक करें":"Book an appointment to see it here"):(ctx.language==="hi"?"आपका अपॉइंटमेंट इतिहास यहां दिखाई देगा":"Your appointment history will appear here")} />
         ) : (
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             {list.map(a => {
@@ -1643,11 +1785,11 @@ function PatientAppointments({ ctx, patient, onOpen, onBookAgain }){
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                         <div style={{fontWeight:800,fontSize:13.5}}>{doc.name}</div>
-                        <Badge tone={STATUS_TONE(a.status)}>{a.status}</Badge>
+                        <Badge tone={STATUS_TONE(a.status)}>{translateStatus(a.status,ctx.language)}</Badge>
                       </div>
-                      <div style={{fontSize:11.5,color:COLORS.muted}}>{doc.specialization}</div>
+                      <div style={{fontSize:11.5,color:COLORS.muted}}>{translateSpecialty(doc.specialization,ctx.language)}</div>
                       {a.patientName && a.patientName!==patient.name && (
-                        <div style={{fontSize:11,color:COLORS.primary,fontWeight:700,marginTop:2}}>For: {a.patientName}</div>
+                        <div style={{fontSize:11,color:COLORS.primary,fontWeight:700,marginTop:2}}>{ctx.language==="hi"?"के लिए":"For"}: {a.patientName}</div>
                       )}
                       <div style={{display:"flex",gap:12,marginTop:6,fontSize:11.5,color:COLORS.muted}}>
                         <span style={{display:"flex",alignItems:"center",gap:3}}><Calendar size={11}/>{fmtDateLabel(a.date)}</span>
@@ -1720,47 +1862,47 @@ function AppointmentDetail({ ctx, appt, patient, onBack }){
           <Avatar src={doc?.photo} name={doc?.name} size={56} />
           <div style={{flex:1}}>
             <div style={{fontWeight:800,fontSize:15}}>{doc?.name}</div>
-            <div style={{fontSize:12,color:COLORS.primary,fontWeight:700}}>{doc?.specialization}</div>
-            <div style={{marginTop:6}}><Badge tone={STATUS_TONE(appt.status)}>{appt.status}</Badge></div>
+            <div style={{fontSize:12,color:COLORS.primary,fontWeight:700}}>{translateSpecialty(doc?.specialization,ctx.language)}</div>
+            <div style={{marginTop:6}}><Badge tone={STATUS_TONE(appt.status)}>{translateStatus(appt.status,ctx.language)}</Badge></div>
           </div>
         </Card>
 
         <Card style={{marginBottom:14}}>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <Row icon={Calendar} label="Date" value={fmtDateLabel(appt.date)} />
-            <Row icon={Clock} label="Time" value={fmtTime12(appt.time)} />
-            <Row icon={appt.type==="Video Consult"?Video:Building2} label="Type" value={appt.type} />
-            <Row icon={IndianRupee} label="Fee" value={`₹${appt.fee}`} />
-            <Row icon={FileText} label="Reason" value={appt.reason} />
-            <Row icon={User} label="Patient" value={`${appt.patientName}, ${appt.patientAge}y`} />
+            <Row icon={Calendar} label={t("date",ctx.language)} value={fmtDateLabel(appt.date)} />
+            <Row icon={Clock} label={t("time",ctx.language)} value={fmtTime12(appt.time)} />
+            <Row icon={appt.type==="Video Consult"?Video:Building2} label={t("type",ctx.language)} value={appt.type==="Video Consult"?t("videoConsult",ctx.language):t("inClinic",ctx.language)} />
+            <Row icon={IndianRupee} label={t("consultationFee",ctx.language)} value={`₹${appt.fee}`} />
+            <Row icon={FileText} label={t("reason",ctx.language)} value={appt.reason} />
+            <Row icon={User} label={t("patient",ctx.language)} value={`${appt.patientName}, ${appt.patientAge}y`} />
           </div>
         </Card>
 
         {["pending","confirmed"].includes(appt.status) && (
           <div style={{display:"flex",gap:10,marginBottom:14}}>
-            <Btn variant="outline" full onClick={()=>setShowReschedule(true)}>Reschedule</Btn>
-            <Btn variant="dangerOutline" full onClick={()=>setShowCancel(true)}>Cancel</Btn>
+            <Btn variant="outline" full onClick={()=>setShowReschedule(true)}>{t("reschedule",ctx.language)}</Btn>
+            <Btn variant="dangerOutline" full onClick={()=>setShowCancel(true)}>{t("cancel",ctx.language)}</Btn>
           </div>
         )}
 
         {appt.status==="completed" && !appt.isDemo && (
-          <div style={{marginBottom:14}}><Btn full variant="outline" icon={FileText} onClick={()=>setShowPrescription(true)}>View Prescription</Btn></div>
+          <div style={{marginBottom:14}}><Btn full variant="outline" icon={FileText} onClick={()=>setShowPrescription(true)}>{t("viewPrescription",ctx.language)}</Btn></div>
         )}
         {appt.status==="completed" && !existingReview && (
-          <Btn full icon={Star} onClick={()=>setShowReview(true)}>Rate & Review</Btn>
+          <Btn full icon={Star} onClick={()=>setShowReview(true)}>{t("rateReview",ctx.language)}</Btn>
         )}
         {appt.status==="completed" && existingReview && (
-          <Card><div style={{fontWeight:700,fontSize:13,marginBottom:6}}>Your review</div><StarRow rating={existingReview.rating}/><div style={{fontSize:13,color:COLORS.muted,marginTop:6}}>{existingReview.comment}</div></Card>
+          <Card><div style={{fontWeight:700,fontSize:13,marginBottom:6}}>{t("yourReview",ctx.language)}</div><StarRow rating={existingReview.rating}/><div style={{fontSize:13,color:COLORS.muted,marginTop:6}}>{existingReview.comment}</div></Card>
         )}
       </div>
 
       {showPrescription && <PrescriptionModal appt={appt} ctx={ctx} onClose={()=>setShowPrescription(false)} canUpload={false} />}
 
-      <Modal open={showCancel} onClose={()=>setShowCancel(false)} title="Cancel Appointment">
-        <div style={{fontSize:13.5,color:COLORS.muted,marginBottom:18}}>Are you sure you want to cancel this appointment with {doc?.name}? This action cannot be undone.</div>
+      <Modal open={showCancel} onClose={()=>setShowCancel(false)} title={t("cancelAppointment",ctx.language)}>
+        <div style={{fontSize:13.5,color:COLORS.muted,marginBottom:18}}>{t("confirmCancelText",ctx.language).replace("{name}",doc?.name||"")}</div>
         <div style={{display:"flex",gap:10}}>
-          <Btn variant="subtle" full onClick={()=>setShowCancel(false)}>Keep it</Btn>
-          <Btn variant="danger" full onClick={cancelAppt}>Yes, cancel</Btn>
+          <Btn variant="subtle" full onClick={()=>setShowCancel(false)}>{t("keepIt",ctx.language)}</Btn>
+          <Btn variant="danger" full onClick={cancelAppt}>{t("yesCancel",ctx.language)}</Btn>
         </div>
       </Modal>
 
@@ -1778,29 +1920,29 @@ function RescheduleModal({ open, onClose, ctx, appt, doctor, patient }){
   const dates = next14Days().filter(d => doctor.workingDays.includes(dayOfWeek(d)) && !doctor.blockedDates?.includes(d));
   const slots = getSlotsForDate(doctor, date, ctx.appointments.filter(a=>a.id!==appt.id));
   const submit = () => {
-    if (!time) { ctx.showToast("Select a new time slot","danger"); return; }
+    if (!time) { ctx.showToast(t("selectNewTimeSlot",ctx.language),"danger"); return; }
     ctx.syncAppt(appt.id, {date, time, status:"pending", rescheduled:true});
     ctx.updateNotifications(prev => [...prev, { id:uid("notif"), userId:patient.id, role:"patient", type:"reschedule", message:`Appointment with ${doctor.name} rescheduled to ${fmtDateLabel(date)} at ${fmtTime12(time)}.`, date:new Date().toISOString(), read:false }]);
-    ctx.showToast("Appointment rescheduled");
+    ctx.showToast(t("appointmentRescheduled",ctx.language));
     onClose();
   };
   return (
-    <Modal open={open} onClose={onClose} title="Reschedule Appointment">
-      <Field label="New date">
+    <Modal open={open} onClose={onClose} title={t("rescheduleAppointment",ctx.language)}>
+      <Field label={t("newDate",ctx.language)}>
         <div className="mq-scroll" style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4}}>
           {dates.map(d=>(
             <button key={d} className="mq-btn" onClick={()=>{setDate(d);setTime(null);}} style={{flexShrink:0,background:date===d?COLORS.primary:"#F1F5F9",color:date===d?"#fff":COLORS.text,borderRadius:10,padding:"8px 12px",fontSize:12,fontWeight:700}}>{fmtDateLabel(d)}</button>
           ))}
         </div>
       </Field>
-      <Field label="New time slot">
+      <Field label={t("newTimeSlot",ctx.language)}>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
           {slots.map(s=>(
             <button key={s.time} disabled={s.taken} className="mq-btn" onClick={()=>setTime(s.time)} style={{background:s.taken?"#F1F5F9":time===s.time?COLORS.primary:"#fff",color:s.taken?COLORS.muted:time===s.time?"#fff":COLORS.text,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"8px 4px",fontSize:12,fontWeight:700}}>{fmtTime12(s.time)}</button>
           ))}
         </div>
       </Field>
-      <Btn full size="lg" onClick={submit}>Confirm New Slot</Btn>
+      <Btn full size="lg" onClick={submit}>{ctx.language==="hi"?"नया स्लॉट पुष्ट करें":"Confirm New Slot"}</Btn>
     </Modal>
   );
 }
@@ -1930,16 +2072,16 @@ function FamilyMembersScreen({ ctx, patient, onBack }){
 
   const remove = async (id) => {
     await supabase.from("family_members").delete().eq("id", id);
-    ctx.showToast("Family member removed");
+    ctx.showToast(t("familyMemberRemoved",ctx.language));
     load();
   };
 
   return (
     <div className="mq-fade-in">
-      <TopBar title="Family Members" onBack={onBack} />
+      <TopBar title={t("familyMembers",ctx.language)} onBack={onBack} />
       <div style={{padding:16}}>
         {members===null ? <LoadingState /> : members.length===0 ? (
-          <EmptyState icon={Users} title="No family members added" subtitle="Add them here so you can quickly book appointments on their behalf." />
+          <EmptyState icon={Users} title={t("noFamilyMembers",ctx.language)} subtitle={t("familyMemberSubtitle",ctx.language)} />
         ) : (
           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
             {members.map(m=>(
@@ -1954,7 +2096,7 @@ function FamilyMembersScreen({ ctx, patient, onBack }){
             ))}
           </div>
         )}
-        <Btn full icon={Plus} onClick={()=>setShowAdd(true)}>Add Family Member</Btn>
+        <Btn full icon={Plus} onClick={()=>setShowAdd(true)}>{t("addFamilyMemberBtn",ctx.language)}</Btn>
       </div>
       {showAdd && <AddFamilyMemberModal patient={patient} onClose={()=>setShowAdd(false)} onAdded={()=>{ setShowAdd(false); load(); }} />}
     </div>
@@ -1998,7 +2140,7 @@ function ReviewModal({ open, onClose, ctx, appt, patient }){
     }
   };
   return (
-    <Modal open={open} onClose={onClose} title="Rate your visit">
+    <Modal open={open} onClose={onClose} title={t("rateYourVisit",ctx.language)}>
       <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:16}}>
         {[1,2,3,4,5].map(n => (
           <button key={n} className="mq-btn" onClick={()=>setRating(n)} style={{background:"none"}}>
@@ -2006,8 +2148,8 @@ function ReviewModal({ open, onClose, ctx, appt, patient }){
           </button>
         ))}
       </div>
-      <Field label="Your feedback"><TextArea value={comment} onChange={e=>setComment(e.target.value)} placeholder="Share your experience..." /></Field>
-      <Btn full size="lg" icon={ThumbsUp} onClick={submit} disabled={saving}>{saving ? "Submitting..." : "Submit Review"}</Btn>
+      <Field label={t("yourFeedback",ctx.language)}><TextArea value={comment} onChange={e=>setComment(e.target.value)} placeholder="Share your experience..." /></Field>
+      <Btn full size="lg" icon={ThumbsUp} onClick={submit} disabled={saving}>{saving ? "Submitting..." : t("submitReview",ctx.language)}</Btn>
     </Modal>
   );
 }
@@ -2023,9 +2165,9 @@ function PatientNotifications({ ctx, patient }){
   }, []);
   return (
     <div className="mq-fade-in">
-      <TopBar title="Notifications" />
+      <TopBar title={t("notifications",ctx.language)} />
       <div style={{padding:16}}>
-        {mine.length===0 ? <EmptyState icon={Bell} title="No notifications yet" subtitle="Booking updates and queue alerts will show up here" /> : (
+        {mine.length===0 ? <EmptyState icon={Bell} title={t("noNotificationsYet",ctx.language)} subtitle={t("notifSubtitle",ctx.language)} /> : (
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {mine.map(n => (
               <Card key={n.id} style={{display:"flex",gap:10}}>
@@ -2074,9 +2216,9 @@ function PatientProfile({ ctx, patient, onOpenDoctor, onOpenFamily }){
           <div style={{fontWeight:800,fontSize:16,marginTop:10}}>{patient.name}</div>
           <div style={{fontSize:12.5,color:COLORS.muted}}>{patient.phone}</div>
           <div style={{display:"flex",justifyContent:"center",gap:20,marginTop:14}}>
-            <div><div style={{fontWeight:800,fontSize:17}}>{mine.length}</div><div style={{fontSize:11,color:COLORS.muted}}>Appointments</div></div>
-            <div><div style={{fontWeight:800,fontSize:17}}>{completed}</div><div style={{fontSize:11,color:COLORS.muted}}>Completed</div></div>
-            <div><div style={{fontWeight:800,fontSize:17}}>{favDoctors.length}</div><div style={{fontSize:11,color:COLORS.muted}}>Favourites</div></div>
+            <div><div style={{fontWeight:800,fontSize:17}}>{mine.length}</div><div style={{fontSize:11,color:COLORS.muted}}>{t("appointmentsStat",ctx.language)}</div></div>
+            <div><div style={{fontWeight:800,fontSize:17}}>{completed}</div><div style={{fontSize:11,color:COLORS.muted}}>{t("completedStat",ctx.language)}</div></div>
+            <div><div style={{fontWeight:800,fontSize:17}}>{favDoctors.length}</div><div style={{fontSize:11,color:COLORS.muted}}>{t("favouritesStat",ctx.language)}</div></div>
           </div>
         </Card>
 
@@ -2085,36 +2227,44 @@ function PatientProfile({ ctx, patient, onOpenDoctor, onOpenFamily }){
             <Users size={19} color={COLORS.primary} />
           </div>
           <div style={{flex:1}}>
-            <div style={{fontWeight:700,fontSize:13.5}}>Family Members</div>
-            <div style={{fontSize:11.5,color:COLORS.muted}}>Manage who you can book appointments for</div>
+            <div style={{fontWeight:700,fontSize:13.5}}>{t("familyMembers",ctx.language)}</div>
+            <div style={{fontSize:11.5,color:COLORS.muted}}>{ctx.language==="hi"?"आप किसके लिए अपॉइंटमेंट बुक कर सकते हैं इसे प्रबंधित करें":"Manage who you can book appointments for"}</div>
           </div>
           <ChevronRight size={18} color={COLORS.muted} />
         </Card>
 
-        <SectionHeader title="Personal Information" action={<button className="mq-btn" onClick={()=>editing?save():setEditing(true)} style={{background:"none",color:COLORS.primary,fontWeight:700,fontSize:12.5,display:"flex",alignItems:"center",gap:4}}>{editing?<><Check size={14}/>Save</>:<><Pencil size={13}/>Edit</>}</button>} />
+        <Card style={{marginBottom:20}}>
+          <div style={{fontWeight:700,fontSize:13.5,marginBottom:10}}>{t("language",ctx.language)}</div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>ctx.setLanguage("en")} style={{flex:1,padding:"9px 0",borderRadius:12,border:`1.5px solid ${ctx.language==="en"?COLORS.primary:COLORS.border}`,background:ctx.language==="en"?COLORS.primarySoft:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>English</button>
+            <button onClick={()=>ctx.setLanguage("hi")} style={{flex:1,padding:"9px 0",borderRadius:12,border:`1.5px solid ${ctx.language==="hi"?COLORS.primary:COLORS.border}`,background:ctx.language==="hi"?COLORS.primarySoft:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>हिंदी</button>
+          </div>
+        </Card>
+
+        <SectionHeader title={t("personalInformation",ctx.language)} action={<button className="mq-btn" onClick={()=>editing?save():setEditing(true)} style={{background:"none",color:COLORS.primary,fontWeight:700,fontSize:12.5,display:"flex",alignItems:"center",gap:4}}>{editing?<><Check size={14}/>{ctx.language==="hi"?"सेव करें":"Save"}</>:<><Pencil size={13}/>{ctx.language==="hi"?"संपादित करें":"Edit"}</>}</button>} />
         <Card style={{marginBottom:20}}>
           {editing ? (
             <div>
-              <Field label="Name"><TextInput value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} /></Field>
-              <Field label="Email"><TextInput value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} /></Field>
-              <Field label="Date of birth"><TextInput type="date" value={form.dob} onChange={e=>setForm(f=>({...f,dob:e.target.value}))} /></Field>
-              <Field label="Gender">
+              <Field label={t("name",ctx.language)}><TextInput value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} /></Field>
+              <Field label={t("email",ctx.language)}><TextInput value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} /></Field>
+              <Field label={t("dateOfBirth",ctx.language)}><TextInput type="date" value={form.dob} onChange={e=>setForm(f=>({...f,dob:e.target.value}))} /></Field>
+              <Field label={t("gender",ctx.language)}>
                 <Select value={form.gender} onChange={e=>setForm(f=>({...f,gender:e.target.value}))}><option value="">Select</option><option>Male</option><option>Female</option><option>Other</option></Select>
               </Field>
             </div>
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              <Row icon={Mail} label="Email" value={patient.email||"Not set"} />
-              <Row icon={Calendar} label="Date of birth" value={patient.dob||"Not set"} />
-              <Row icon={User} label="Gender" value={patient.gender||"Not set"} />
+              <Row icon={Mail} label={t("email",ctx.language)} value={patient.email||t("notSet",ctx.language)} />
+              <Row icon={Calendar} label={t("dateOfBirth",ctx.language)} value={patient.dob||t("notSet",ctx.language)} />
+              <Row icon={User} label={t("gender",ctx.language)} value={patient.gender||t("notSet",ctx.language)} />
             </div>
           )}
         </Card>
 
-        <SectionHeader title="Favourite Doctors" />
-        {favDoctors.length===0 ? <EmptyState icon={Heart} title="No favourites yet" subtitle="Tap the heart icon on a doctor's profile to save them here" /> : (
+        <SectionHeader title={t("favouriteDoctors",ctx.language)} />
+        {favDoctors.length===0 ? <EmptyState icon={Heart} title={t("noFavouritesYet",ctx.language)} subtitle={t("favSubtitle",ctx.language)} /> : (
           <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
-            {favDoctors.map(d => <DoctorCard key={d.id} doctor={d} onClick={()=>onOpenDoctor(d)} onFav={()=>{
+            {favDoctors.map(d => <DoctorCard key={d.id} doctor={d} onClick={()=>onOpenDoctor(d)} lang={ctx.language} onFav={()=>{
               ctx.updatePatients(prev => prev.map(p => p.id===patient.id ? {...p, favorites:p.favorites.filter(id=>id!==d.id)} : p));
             }} isFav={true} />)}
           </div>
@@ -2152,6 +2302,8 @@ function DoctorApp({ ctx }){
     { key:"profile", label:"Profile", icon:UserCog },
   ];
   const goTab = (t) => { setTab(t); setView({name:t}); };
+  const goToRoot = useCallback(() => setView({name:tab}), [tab]);
+  useAppBackButton(view.name, tab, goToRoot);
 
   let content;
   if (view?.name === "chatConversation") content = <ChatConversation ctx={ctx} chatId={view.chatId} onBack={()=>setView({name:"messages"})} />;
@@ -2576,6 +2728,13 @@ function DoctorProfileSettings({ ctx, doctor }){
               </label>
               <div style={{fontWeight:800,fontSize:16,marginTop:10}}>{doctor.name}</div>
               <Badge tone="success">Verified Doctor</Badge>
+            </Card>
+            <Card style={{marginBottom:16}}>
+              <div style={{fontWeight:700,fontSize:13.5,marginBottom:10}}>{t("language",ctx.language)} <span style={{fontWeight:400,color:COLORS.muted,fontSize:11.5}}>(saved to your account; doctor screens are English-only for now)</span></div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>ctx.setLanguage("en")} style={{flex:1,padding:"9px 0",borderRadius:12,border:`1.5px solid ${ctx.language==="en"?COLORS.primary:COLORS.border}`,background:ctx.language==="en"?COLORS.primarySoft:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>English</button>
+                <button onClick={()=>ctx.setLanguage("hi")} style={{flex:1,padding:"9px 0",borderRadius:12,border:`1.5px solid ${ctx.language==="hi"?COLORS.primary:COLORS.border}`,background:ctx.language==="hi"?COLORS.primarySoft:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>हिंदी</button>
+              </div>
             </Card>
             <Field label="Full name"><TextInput value={form.name} onChange={e=>set("name",e.target.value)} /></Field>
             <Field label="Specialization">
@@ -3172,10 +3331,10 @@ function PatientMessages({ ctx, patient, onOpenChat }){
 
   return (
     <div className="mq-fade-in">
-      <div style={{padding:"18px 16px 8px"}}><div className="mq-display" style={{fontSize:20,fontWeight:800}}>Messages</div></div>
+      <div style={{padding:"18px 16px 8px"}}><div className="mq-display" style={{fontSize:20,fontWeight:800}}>{t("messages",ctx.language)}</div></div>
       {canRequest.length>0 && (
         <div style={{padding:"0 16px 8px"}}>
-          <div style={{fontWeight:700,fontSize:12.5,color:COLORS.muted,marginBottom:8}}>START A CHAT</div>
+          <div style={{fontWeight:700,fontSize:12.5,color:COLORS.muted,marginBottom:8}}>{t("startAChatSection",ctx.language)}</div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {canRequest.map(id=>{
               const doc = ctx.doctors.find(d=>d.id===id);
@@ -3185,9 +3344,9 @@ function PatientMessages({ ctx, patient, onOpenChat }){
                   <Avatar src={doc.photo} name={doc.name} size={40} />
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:700,fontSize:13.5}}>{doc.name}</div>
-                    <div style={{fontSize:11.5,color:COLORS.muted}}>{doc.specialization}</div>
+                    <div style={{fontSize:11.5,color:COLORS.muted}}>{translateSpecialty(doc.specialization,ctx.language)}</div>
                   </div>
-                  <Btn size="sm" onClick={()=>requestChat(id)}>Request Chat</Btn>
+                  <Btn size="sm" onClick={()=>requestChat(id)}>{t("requestChat",ctx.language)}</Btn>
                 </Card>
               );
             })}
@@ -3195,9 +3354,9 @@ function PatientMessages({ ctx, patient, onOpenChat }){
         </div>
       )}
       <div style={{padding:"12px 16px"}}>
-        <div style={{fontWeight:700,fontSize:12.5,color:COLORS.muted,marginBottom:8}}>MY CHATS</div>
+        <div style={{fontWeight:700,fontSize:12.5,color:COLORS.muted,marginBottom:8}}>{t("myChatsSection",ctx.language)}</div>
         {(!chats || chats.length===0) ? (
-          <EmptyState icon={MessageCircle} title="No chats yet" subtitle="Chats become available for 10 days after a completed appointment." />
+          <EmptyState icon={MessageCircle} title={t("noChatsYet",ctx.language)} subtitle={t("noChatsSubtitle",ctx.language)} />
         ) : (
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {chats.map(c=>{
@@ -3207,11 +3366,11 @@ function PatientMessages({ ctx, patient, onOpenChat }){
                 <Card key={c.id} hover onClick={()=>onOpenChat(c.id)} style={{display:"flex",gap:10,alignItems:"center"}}>
                   <Avatar src={doc?.photo} name={doc?.name||"Doctor"} size={40} />
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:700,fontSize:13.5}}>{doc?.name || "Doctor"}</div>
-                    <div style={{fontSize:11.5,color:COLORS.muted}}>{doc?.specialization}</div>
+                    <div style={{fontWeight:700,fontSize:13.5}}>{doc?.name || t("doctorWord",ctx.language)}</div>
+                    <div style={{fontSize:11.5,color:COLORS.muted}}>{translateSpecialty(doc?.specialization,ctx.language)}</div>
                   </div>
                   <Badge tone={c.status==="pending"?"warning":c.status==="declined"?"danger":expired?"default":"success"}>
-                    {c.status==="pending"?"Pending":c.status==="declined"?"Declined":expired?"Expired":"Active"}
+                    {c.status==="pending"?t("pending",ctx.language):c.status==="declined"?t("declined",ctx.language):expired?t("expired",ctx.language):t("active",ctx.language)}
                   </Badge>
                 </Card>
               );
@@ -3370,9 +3529,9 @@ function ChatConversation({ ctx, chatId, onBack }){
   return (
     <div className="mq-fade-in" style={{display:"flex",flexDirection:"column",height:"100vh"}}>
       <TopBar title={otherName} onBack={onBack} />
-      {chat.status==="pending" && <div style={{padding:"10px 16px",background:COLORS.warnSoft,color:COLORS.warning,fontSize:12.5,fontWeight:600}}>Waiting for the doctor to accept this chat request.</div>}
-      {chat.status==="declined" && <div style={{padding:"10px 16px",background:COLORS.dangerSoft,color:COLORS.danger,fontSize:12.5,fontWeight:600}}>This chat request was declined.</div>}
-      {chat.status==="accepted" && expired && <div style={{padding:"10px 16px",background:COLORS.border,color:COLORS.muted,fontSize:12.5,fontWeight:600}}>This chat has ended (10-day window closed). You can still view the history below.</div>}
+      {chat.status==="pending" && <div style={{padding:"10px 16px",background:COLORS.warnSoft,color:COLORS.warning,fontSize:12.5,fontWeight:600}}>{t("waitingForDoctor",ctx.language)}</div>}
+      {chat.status==="declined" && <div style={{padding:"10px 16px",background:COLORS.dangerSoft,color:COLORS.danger,fontSize:12.5,fontWeight:600}}>{t("chatDeclinedMsg",ctx.language)}</div>}
+      {chat.status==="accepted" && expired && <div style={{padding:"10px 16px",background:COLORS.border,color:COLORS.muted,fontSize:12.5,fontWeight:600}}>{t("chatEndedMsg",ctx.language)}</div>}
 
       <div style={{flex:1,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:8}}>
         {messages.map(m=>{
@@ -3396,14 +3555,14 @@ function ChatConversation({ ctx, chatId, onBack }){
             <ImageIcon size={22} color={COLORS.muted} />
             <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{ const f=e.target.files?.[0]; if(f) sendImage(f); }} />
           </label>
-          <input value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>e.key==="Enter" && send()} placeholder="Type a message..." style={{flex:1,padding:"10px 14px",borderRadius:20,border:`1px solid ${COLORS.border}`,fontSize:13.5,outline:"none"}} />
+          <input value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>e.key==="Enter" && send()} placeholder={t("typeMessage",ctx.language)} style={{flex:1,padding:"10px 14px",borderRadius:20,border:`1px solid ${COLORS.border}`,fontSize:13.5,outline:"none"}} />
           <button onClick={send} disabled={sending || !text.trim()} style={{width:38,height:38,borderRadius:"50%",background:COLORS.primary,border:"none",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:sending||!text.trim()?0.6:1}}>
             <Send size={16} color="#fff" />
           </button>
         </div>
       ) : (
         <div style={{padding:14,textAlign:"center",fontSize:12.5,color:COLORS.muted,borderTop:`1px solid ${COLORS.border}`}}>
-          {chat.status==="pending" ? "You can send messages once the doctor accepts." : "This conversation is read-only."}
+          {chat.status==="pending" ? t("canSendOnceAccepted",ctx.language) : t("readOnlyConversation",ctx.language)}
         </div>
       )}
 
