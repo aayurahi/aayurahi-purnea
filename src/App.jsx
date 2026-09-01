@@ -50,11 +50,7 @@ const QUALS = {
 
 export function AayuRahiLogoMark({ size = 30 }){
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M26 6H38V24H56V36H38V54H26V36H8V24H26V6Z" fill="#fff" />
-      <path d="M12 40C20 40 27 37 32 30C37 23 44 20 52 20" stroke="#0D9C88" strokeWidth="6" strokeLinecap="round" />
-      <path d="M43 14L54 20L48 31" stroke="#0D9C88" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <img src="/icon-512.png" alt="AayuRahi" width={size} height={size} style={{ borderRadius: size*0.22, display:"block" }} />
   );
 }
 export const COLORS = {
@@ -921,8 +917,8 @@ function RoleSelect({ ctx }){
   return (
     <div className="mq-fade-in" style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",padding:28,background:`linear-gradient(180deg, ${COLORS.primarySoft} 0%, ${COLORS.bg} 55%)`}}>
       <div style={{textAlign:"center",marginBottom:36}}>
-        <div style={{width:64,height:64,borderRadius:18,background:COLORS.primary,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",boxShadow:`0 10px 24px ${COLORS.primarySoft}`}}>
-          <AayuRahiLogoMark size={34} />
+        <div style={{width:64,height:64,borderRadius:18,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",boxShadow:`0 10px 24px ${COLORS.primarySoft}`}}>
+          <AayuRahiLogoMark size={64} />
         </div>
         <div className="mq-display" style={{fontSize:26,fontWeight:800}}>AayuRahi</div>
       </div>

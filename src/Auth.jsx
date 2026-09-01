@@ -18,8 +18,8 @@ function Shell({ title, onBack, children }) {
         </button>
       )}
       <div style={{ textAlign: "center", marginBottom: 24 }}>
-        <div style={{ width: 56, height: 56, borderRadius: 16, background: COLORS.primary, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
-          <AayuRahiLogoMark size={28} />
+        <div style={{ width: 56, height: 56, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+          <AayuRahiLogoMark size={56} />
         </div>
         <div style={{ fontSize: 20, fontWeight: 800 }}>{title}</div>
       </div>
