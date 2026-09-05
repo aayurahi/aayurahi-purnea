@@ -1,7 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { User, Stethoscope, ShieldCheck, Mail, Phone, ChevronRight, ArrowLeft, Loader2, CheckCircle2, Upload } from "lucide-react";
+import HCaptcha from "@hcaptcha/react-hcaptcha";
 import { supabase } from "./supabaseClient";
 import { COLORS, AayuRahiLogoMark, useAppBackButton, t } from "./App";
+
+/* --------------------------- hCaptcha (reusable) ---------------------------
+   Used on the email signup form below. When phone/OTP or WhatsApp OTP signup
+   is added later, drop this same <CaptchaBox ref={...} onVerify={...} />
+   pattern onto that screen too — no other setup needed since Supabase's
+   Captcha protection already covers all Auth endpoints. */
+const HCAPTCHA_SITE_KEY = import.meta.env.VITE_HCAPTCHA_SITE_KEY;
 
 /* ============================================================================
    REAL AUTH — email/password + phone OTP, backed by Supabase Auth.
@@ -126,14 +134,18 @@ function EmailAuth({ onBack, onAuthed, onNeedsDoctorApply }) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const captchaRef = useRef(null);
 
   const submit = async () => {
     setError(""); setLoading(true);
     try {
       if (mode === "signup") {
         const { data, error } = await supabase.auth.signUp({
-          email, password, options: { data: { full_name: name } }
+          email, password, options: { data: { full_name: name }, captchaToken }
         });
+        captchaRef.current?.resetCaptcha();
+        setCaptchaToken(null);
         if (error) throw error;
         if (data.session) {
           await resolveProfileAndRoute(data.user.id, { onAuthed, onNeedsDoctorApply });
@@ -158,8 +170,18 @@ function EmailAuth({ onBack, onAuthed, onNeedsDoctorApply }) {
       {mode === "signup" && <TextField label="Full Name" value={name} onChange={e => setName(e.target.value)} placeholder="Your name" />}
       <TextField label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
       <TextField label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" />
+      {mode === "signup" && (
+        <div style={{ marginBottom: 14, display: "flex", justifyContent: "center" }}>
+          <HCaptcha
+            ref={captchaRef}
+            sitekey={HCAPTCHA_SITE_KEY}
+            onVerify={(token) => setCaptchaToken(token)}
+            onExpire={() => setCaptchaToken(null)}
+          />
+        </div>
+      )}
       <ErrorMsg msg={error} />
-      <PrimaryButton onClick={submit} disabled={loading || !email || !password}>
+      <PrimaryButton onClick={submit} disabled={loading || !email || !password || (mode === "signup" && !captchaToken)}>
         {loading ? <Loader2 size={16} style={{animation:"spin 1s linear infinite"}} /> : (mode === "login" ? "Log In" : "Sign Up")}
       </PrimaryButton>
       <div style={{ textAlign: "center", marginTop: 16, fontSize: 13, color: COLORS.muted }}>

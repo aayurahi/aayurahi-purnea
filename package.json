@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@hcaptcha/react-hcaptcha": "^2.2.0",
     "@sentry/react": "^10.73.0",
     "@supabase/supabase-js": "^2.112.3",
     "lucide-react": "^0.383.0",
