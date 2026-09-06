@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import Auth from "./Auth";
+import { requestNotificationPermission, listenForForegroundMessages } from "./firebaseMessaging";
 import {
   Search, MapPin, Star, Clock, Calendar, User, Bell, Home as HomeIcon, Users,
   Stethoscope, CheckCircle2, XCircle, ChevronRight, ChevronLeft, Filter, Heart,
@@ -844,6 +845,16 @@ export default function App(){
       .on("postgres_changes", { event:"INSERT", schema:"public", table:"messages" }, refreshUnreadChats)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
+  }, [session?.id]);
+
+  // Push notifications: once a real patient or doctor is logged in, ask the
+  // browser for notification permission and save this device's token to
+  // Supabase (silently skipped for demo/no-session state, and safe to run
+  // again on every login — it just refreshes the same token).
+  useEffect(() => {
+    if (!session || (session.role !== "patient" && session.role !== "doctor")) return;
+    requestNotificationPermission(session.id);
+    listenForForegroundMessages((message) => showToast(message));
   }, [session?.id]);
 
   // In-app reminders: whenever the app loads and there's an appointment happening
