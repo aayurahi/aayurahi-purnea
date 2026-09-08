@@ -652,10 +652,37 @@ export default function App(){
   const [notifications, setNotifications] = useState([]);
   const [specialties, setSpecialties] = useState([]);
   const [toast, setToast] = useState(null);
+  const [deepLink, setDeepLink] = useState(null); // { type: "chat", chatId }
+  const clearDeepLink = useCallback(() => setDeepLink(null), []);
 
   const showToast = useCallback((msg, tone="success") => {
     setToast({ msg, tone });
     setTimeout(()=>setToast(null), 2600);
+  }, []);
+
+  // Deep-linking from tapped push notifications.
+  // Case 1: no app tab was open, so the service worker opened a fresh one
+  // with ?openChat=<id> in the URL — read it once on load.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const openChat = params.get("openChat");
+    if (openChat) {
+      setDeepLink({ type: "chat", chatId: openChat });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
+  // Case 2: the app was already open in a tab, so the service worker just
+  // focused it and sends this message instead (no page reload happens).
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const handler = (event) => {
+      if (event.data?.type === "openChat" && event.data.chatId) {
+        setDeepLink({ type: "chat", chatId: event.data.chatId });
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", handler);
+    return () => navigator.serviceWorker.removeEventListener("message", handler);
   }, []);
 
   // Boot: load or seed data
@@ -888,7 +915,8 @@ export default function App(){
     doctors, patients, appointments, reviews, notifications, specialties,
     updateDoctors, updatePatients, updateAppointments, updateReviews, updateNotifications, updateSpecialties,
     showToast, session, login, logout, refreshRealDoctors, uploadAvatar, syncAppt, refreshRealAppointments,
-    unreadChats, refreshUnreadChats, refreshRealReviews, language, setLanguage
+    unreadChats, refreshUnreadChats, refreshRealReviews, language, setLanguage,
+    deepLink, clearDeepLink
   };
 
   if (!booted) {
@@ -1151,6 +1179,15 @@ function PatientApp({ ctx }){
   const goTab = (t) => { setTab(t); setView({name:t}); };
   const goToRoot = useCallback(() => setView({name:tab}), [tab]);
   useAppBackButton(view.name, tab, goToRoot);
+
+  // If a chat notification was tapped, jump straight into that conversation.
+  useEffect(() => {
+    if (ctx.deepLink?.type === "chat") {
+      setTab("messages");
+      setView({ name: "chatConversation", chatId: ctx.deepLink.chatId });
+      ctx.clearDeepLink();
+    }
+  }, [ctx.deepLink]);
 
   const navItems = [
     { key:"home", label:t("home",ctx.language), icon:HomeIcon },
@@ -2311,6 +2348,15 @@ function DoctorApp({ ctx }){
   const goTab = (t) => { setTab(t); setView({name:t}); };
   const goToRoot = useCallback(() => setView({name:tab}), [tab]);
   useAppBackButton(view.name, tab, goToRoot);
+
+  // If a chat notification was tapped, jump straight into that conversation.
+  useEffect(() => {
+    if (ctx.deepLink?.type === "chat") {
+      setTab("messages");
+      setView({ name: "chatConversation", chatId: ctx.deepLink.chatId });
+      ctx.clearDeepLink();
+    }
+  }, [ctx.deepLink]);
 
   let content;
   if (view?.name === "chatConversation") content = <ChatConversation ctx={ctx} chatId={view.chatId} onBack={()=>setView({name:"messages"})} />;
