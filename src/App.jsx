@@ -1180,11 +1180,15 @@ function PatientApp({ ctx }){
   const goToRoot = useCallback(() => setView({name:tab}), [tab]);
   useAppBackButton(view.name, tab, goToRoot);
 
-  // If a chat notification was tapped, jump straight into that conversation.
+  // If a notification was tapped, jump straight to what it's about.
   useEffect(() => {
     if (ctx.deepLink?.type === "chat") {
       setTab("messages");
       setView({ name: "chatConversation", chatId: ctx.deepLink.chatId });
+      ctx.clearDeepLink();
+    } else if (ctx.deepLink?.type === "appointment") {
+      setTab("appointments");
+      setView({ name: "appointmentDetail", apptId: ctx.deepLink.apptId });
       ctx.clearDeepLink();
     }
   }, [ctx.deepLink]);
