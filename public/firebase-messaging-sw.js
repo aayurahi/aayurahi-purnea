@@ -33,22 +33,30 @@ messaging.onBackgroundMessage((payload) => {
 });
 
 // Tapping the notification takes the person to the exact place it's about —
-// e.g. straight into the relevant chat conversation, not just the app's home
-// screen. If a tab is already open, we focus it and hand it the destination
-// via postMessage (focusing doesn't reload the page); otherwise we open a
-// fresh tab with the destination encoded in the URL, which the app reads on load.
+// e.g. straight into the relevant chat conversation or appointment, not just
+// the app's home screen. This is generic: any notification type just needs
+// its relevant id fields in `data`, and App.jsx interprets `data.type` to
+// decide where to navigate — no service-worker change needed for new types.
+// If a tab is already open, we focus it and hand it the destination via
+// postMessage (focusing doesn't reload the page); otherwise we open a fresh
+// tab with the destination encoded in the URL, which the app reads on load.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const data = event.notification.data || {};
-  const targetUrl = data.chatId ? `/?openChat=${encodeURIComponent(data.chatId)}` : "/";
+
+  const params = new URLSearchParams();
+  if (data.type) params.set("notifType", data.type);
+  if (data.chatId) params.set("chatId", data.chatId);
+  if (data.apptId) params.set("apptId", data.apptId);
+  const targetUrl = [...params].length ? `/?${params.toString()}` : "/";
 
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
         if (client.url.includes(self.location.origin) && "focus" in client) {
           client.focus();
-          if (data.chatId) {
-            client.postMessage({ type: "openChat", chatId: data.chatId });
+          if (data.type) {
+            client.postMessage({ type: "notificationTapped", data });
           }
           return;
         }

@@ -652,7 +652,7 @@ export default function App(){
   const [notifications, setNotifications] = useState([]);
   const [specialties, setSpecialties] = useState([]);
   const [toast, setToast] = useState(null);
-  const [deepLink, setDeepLink] = useState(null); // { type: "chat", chatId }
+  const [deepLink, setDeepLink] = useState(null); // { type: "chat", chatId } | { type: "appointment", apptId }
   const clearDeepLink = useCallback(() => setDeepLink(null), []);
 
   const showToast = useCallback((msg, tone="success") => {
@@ -660,14 +660,29 @@ export default function App(){
     setTimeout(()=>setToast(null), 2600);
   }, []);
 
+  // Turns a notification's data (whatever fields it carries — chatId, apptId,
+  // etc.) into the deepLink shape our screens understand. Adding a new
+  // notification type later just means adding one case here.
+  function deepLinkFromNotificationData(data) {
+    if (!data) return null;
+    if (data.type === "chat_message" && data.chatId) return { type: "chat", chatId: data.chatId };
+    if (data.type === "appointment" && data.apptId) return { type: "appointment", apptId: data.apptId };
+    return null;
+  }
+
   // Deep-linking from tapped push notifications.
   // Case 1: no app tab was open, so the service worker opened a fresh one
-  // with ?openChat=<id> in the URL — read it once on load.
+  // with the destination encoded as query params — read it once on load.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const openChat = params.get("openChat");
-    if (openChat) {
-      setDeepLink({ type: "chat", chatId: openChat });
+    const notifType = params.get("notifType");
+    if (notifType) {
+      const link = deepLinkFromNotificationData({
+        type: notifType,
+        chatId: params.get("chatId"),
+        apptId: params.get("apptId"),
+      });
+      if (link) setDeepLink(link);
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
@@ -677,8 +692,9 @@ export default function App(){
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     const handler = (event) => {
-      if (event.data?.type === "openChat" && event.data.chatId) {
-        setDeepLink({ type: "chat", chatId: event.data.chatId });
+      if (event.data?.type === "notificationTapped") {
+        const link = deepLinkFromNotificationData(event.data.data);
+        if (link) setDeepLink(link);
       }
     };
     navigator.serviceWorker.addEventListener("message", handler);
