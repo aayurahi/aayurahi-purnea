@@ -667,6 +667,7 @@ export default function App(){
     if (!data) return null;
     if (data.type === "chat_message" && data.chatId) return { type: "chat", chatId: data.chatId };
     if (data.type === "appointment" && data.apptId) return { type: "appointment", apptId: data.apptId };
+    if (data.type === "review") return { type: "review" };
     return null;
   }
 
@@ -2369,11 +2370,15 @@ function DoctorApp({ ctx }){
   const goToRoot = useCallback(() => setView({name:tab}), [tab]);
   useAppBackButton(view.name, tab, goToRoot);
 
-  // If a chat notification was tapped, jump straight into that conversation.
+  // If a notification was tapped, jump straight to what it's about.
   useEffect(() => {
     if (ctx.deepLink?.type === "chat") {
       setTab("messages");
       setView({ name: "chatConversation", chatId: ctx.deepLink.chatId });
+      ctx.clearDeepLink();
+    } else if (ctx.deepLink?.type === "review") {
+      setTab("profile");
+      setView({ name: "profile" });
       ctx.clearDeepLink();
     }
   }, [ctx.deepLink]);
