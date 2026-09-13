@@ -2380,6 +2380,12 @@ function DoctorApp({ ctx }){
       setTab("profile");
       setView({ name: "profile" });
       ctx.clearDeepLink();
+    } else if (ctx.deepLink?.type === "appointment") {
+      // Doctors don't have a single-appointment detail screen (unlike
+      // patients) — the closest sensible landing spot is their appointments list.
+      setTab("appointments");
+      setView({ name: "appointments" });
+      ctx.clearDeepLink();
     }
   }, [ctx.deepLink]);
 
