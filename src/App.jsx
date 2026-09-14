@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import Auth from "./Auth";
+import LegalPage from "./Legal";
 import { requestNotificationPermission, listenForForegroundMessages } from "./firebaseMessaging";
 import {
   Search, MapPin, Star, Clock, Calendar, User, Bell, Home as HomeIcon, Users,
@@ -643,6 +644,17 @@ function StarRow({ rating, size=13 }){
    ROOT APP
 ============================================================================ */
 export default function App(){
+  // If the app is opened directly at /privacy or /terms (e.g. someone follows
+  // an app-store listing link), show that document standalone — no login or
+  // app data needed. This is computed once from the URL the page loaded with.
+  const legalPathMatch = (() => {
+    const path = window.location.pathname.replace(/\/+$/, "") || "/";
+    if (path === "/privacy" || path === "/privacy-policy") return "privacy";
+    if (path === "/terms" || path === "/terms-of-service") return "terms";
+    return null;
+  })();
+  const [legalOverlay, setLegalOverlay] = useState(null); // in-app: null | "privacy" | "terms"
+
   const [booted, setBooted] = useState(false);
   const [session, setSession] = useState(null); // {role:'patient'|'doctor'|'admin', id}
   const [doctors, setDoctors] = useState([]);
@@ -933,8 +945,17 @@ export default function App(){
     updateDoctors, updatePatients, updateAppointments, updateReviews, updateNotifications, updateSpecialties,
     showToast, session, login, logout, refreshRealDoctors, uploadAvatar, syncAppt, refreshRealAppointments,
     unreadChats, refreshUnreadChats, refreshRealReviews, language, setLanguage,
-    deepLink, clearDeepLink
+    deepLink, clearDeepLink, openLegal: setLegalOverlay
   };
+
+  if (legalPathMatch) {
+    return (
+      <div className="mq-root" style={{maxWidth:520, margin:"0 auto", position:"relative", minHeight:"100vh", boxShadow:"0 0 40px rgba(15,27,45,0.06)"}}>
+        <GlobalStyle />
+        <LegalPage doc={legalPathMatch} standalone />
+      </div>
+    );
+  }
 
   if (!booted) {
     return <div className="mq-root"><GlobalStyle /><LoadingState label="Setting up AayuRahi" /></div>;
@@ -944,7 +965,7 @@ export default function App(){
     <div className="mq-root" style={{maxWidth:520, margin:"0 auto", position:"relative", minHeight:"100vh", boxShadow:"0 0 40px rgba(15,27,45,0.06)"}}>
       <GlobalStyle />
       <Toast toast={toast} />
-      {!session && <Auth onAuthed={login} />}
+      {!session && <Auth onAuthed={login} onOpenLegal={setLegalOverlay} />}
       {session?.role === "patient" && <PatientApp ctx={ctx} />}
       {session?.role === "doctor" && session.verified && <DoctorApp ctx={ctx} />}
       {session?.role === "doctor" && !session.verified && (
@@ -955,6 +976,11 @@ export default function App(){
         </div>
       )}
       {session?.role === "admin" && <AdminApp ctx={ctx} />}
+      {legalOverlay && (
+        <div style={{position:"absolute", inset:0, zIndex:1000, background:"#fff"}}>
+          <LegalPage doc={legalOverlay} onBack={()=>setLegalOverlay(null)} />
+        </div>
+      )}
     </div>
   );
 }
@@ -2306,6 +2332,15 @@ function PatientProfile({ ctx, patient, onOpenDoctor, onOpenFamily }){
           </div>
         </Card>
 
+        <Card style={{marginBottom:20, display:"flex", flexDirection:"column", gap:2}}>
+          <button className="mq-btn" onClick={()=>ctx.openLegal("privacy")} style={{background:"none",display:"flex",alignItems:"center",gap:10,padding:"8px 2px",textAlign:"left"}}>
+            <ShieldCheck size={17} color={COLORS.muted} /><span style={{fontWeight:700,fontSize:13.5,flex:1}}>Privacy Policy</span><ChevronRight size={16} color={COLORS.muted} />
+          </button>
+          <button className="mq-btn" onClick={()=>ctx.openLegal("terms")} style={{background:"none",display:"flex",alignItems:"center",gap:10,padding:"8px 2px",textAlign:"left"}}>
+            <FileText size={17} color={COLORS.muted} /><span style={{fontWeight:700,fontSize:13.5,flex:1}}>Terms of Service</span><ChevronRight size={16} color={COLORS.muted} />
+          </button>
+        </Card>
+
         <SectionHeader title={t("personalInformation",ctx.language)} action={<button className="mq-btn" onClick={()=>editing?save():setEditing(true)} style={{background:"none",color:COLORS.primary,fontWeight:700,fontSize:12.5,display:"flex",alignItems:"center",gap:4}}>{editing?<><Check size={14}/>{ctx.language==="hi"?"सेव करें":"Save"}</>:<><Pencil size={13}/>{ctx.language==="hi"?"संपादित करें":"Edit"}</>}</button>} />
         <Card style={{marginBottom:20}}>
           {editing ? (
@@ -2820,6 +2855,14 @@ function DoctorProfileSettings({ ctx, doctor }){
                 <button onClick={()=>ctx.setLanguage("hi")} style={{flex:1,padding:"9px 0",borderRadius:12,border:`1.5px solid ${ctx.language==="hi"?COLORS.primary:COLORS.border}`,background:ctx.language==="hi"?COLORS.primarySoft:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>हिंदी</button>
               </div>
             </Card>
+            <Card style={{marginBottom:16, display:"flex", flexDirection:"column", gap:2}}>
+              <button className="mq-btn" onClick={()=>ctx.openLegal("privacy")} style={{background:"none",display:"flex",alignItems:"center",gap:10,padding:"8px 2px",textAlign:"left"}}>
+                <ShieldCheck size={17} color={COLORS.muted} /><span style={{fontWeight:700,fontSize:13.5,flex:1}}>Privacy Policy</span><ChevronRight size={16} color={COLORS.muted} />
+              </button>
+              <button className="mq-btn" onClick={()=>ctx.openLegal("terms")} style={{background:"none",display:"flex",alignItems:"center",gap:10,padding:"8px 2px",textAlign:"left"}}>
+                <FileText size={17} color={COLORS.muted} /><span style={{fontWeight:700,fontSize:13.5,flex:1}}>Terms of Service</span><ChevronRight size={16} color={COLORS.muted} />
+              </button>
+            </Card>
             <Field label="Full name"><TextInput value={form.name} onChange={e=>set("name",e.target.value)} /></Field>
             <Field label="Specialization">
               <Select value={form.specialization} onChange={e=>set("specialization",e.target.value)}>{SPECIALTIES.map(s=><option key={s.name}>{s.name}</option>)}</Select>
@@ -2944,6 +2987,8 @@ function AdminApp({ ctx }){
           <MoreRow icon={Users} label="Patients" onClick={()=>{setTab("patients");setMore(false);}} />
           <MoreRow icon={Tags} label="Specialties & Categories" onClick={()=>{setTab("specialties");setMore(false);}} />
           <MoreRow icon={Hospital} label="Clinics" onClick={()=>{setTab("clinics");setMore(false);}} />
+          <MoreRow icon={ShieldCheck} label="Privacy Policy" onClick={()=>{setMore(false);ctx.openLegal("privacy");}} />
+          <MoreRow icon={FileText} label="Terms of Service" onClick={()=>{setMore(false);ctx.openLegal("terms");}} />
           <MoreRow icon={LogOut} label="Logout" danger onClick={()=>ctx.logout()} />
         </div>
       </Modal>

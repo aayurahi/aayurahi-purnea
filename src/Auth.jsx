@@ -59,7 +59,7 @@ function ErrorMsg({ msg }) {
 }
 
 /* --------------------------- Landing choice --------------------------- */
-export default function Auth({ onAuthed }) {
+export default function Auth({ onAuthed, onOpenLegal }) {
   const [screen, setScreen] = useState("landing"); // landing | email | phone | doctorApply | pendingDoctor
   const [pendingProfile, setPendingProfile] = useState(null);
   const [lang, setLang] = useState(() => localStorage.getItem("mq_lang") || "en");
@@ -71,7 +71,7 @@ export default function Auth({ onAuthed }) {
     localStorage.setItem("mq_lang", next);
   };
 
-  if (screen === "email") return <EmailAuth onBack={() => setScreen("landing")} onAuthed={onAuthed} onNeedsDoctorApply={(p) => { setPendingProfile(p); setScreen("doctorApply"); }} />;
+  if (screen === "email") return <EmailAuth onBack={() => setScreen("landing")} onAuthed={onAuthed} onNeedsDoctorApply={(p) => { setPendingProfile(p); setScreen("doctorApply"); }} onOpenLegal={onOpenLegal} />;
   if (screen === "phone") return <PhoneAuth onBack={() => setScreen("landing")} onAuthed={onAuthed} onNeedsDoctorApply={(p) => { setPendingProfile(p); setScreen("doctorApply"); }} />;
   if (screen === "doctorApply") return <DoctorApply profile={pendingProfile} onDone={() => setScreen("pendingDoctor")} onSkip={() => onAuthed(pendingProfile)} />;
   if (screen === "pendingDoctor") return <PendingDoctorScreen onContinueAsPatient={() => onAuthed(pendingProfile)} />;
@@ -90,6 +90,13 @@ export default function Auth({ onAuthed }) {
           {lang === "en" ? "हिंदी" : "English"}
         </button>
       </div>
+      {onOpenLegal && (
+        <div style={{ textAlign: "center", marginTop: 22, fontSize: 11.5, color: COLORS.muted }}>
+          <a onClick={() => onOpenLegal("privacy")} style={{ color: COLORS.muted, cursor: "pointer", textDecoration: "underline" }}>Privacy Policy</a>
+          {"  ·  "}
+          <a onClick={() => onOpenLegal("terms")} style={{ color: COLORS.muted, cursor: "pointer", textDecoration: "underline" }}>Terms of Service</a>
+        </div>
+      )}
     </Shell>
   );
 }
@@ -127,7 +134,7 @@ async function resolveProfileAndRoute(userId, { onAuthed, onNeedsDoctorApply }) 
 }
 
 /* --------------------------- Email + Password --------------------------- */
-function EmailAuth({ onBack, onAuthed, onNeedsDoctorApply }) {
+function EmailAuth({ onBack, onAuthed, onNeedsDoctorApply, onOpenLegal }) {
   const [mode, setMode] = useState("login"); // login | signup
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -178,6 +185,17 @@ function EmailAuth({ onBack, onAuthed, onNeedsDoctorApply }) {
             onVerify={(token) => setCaptchaToken(token)}
             onExpire={() => setCaptchaToken(null)}
           />
+        </div>
+      )}
+      {mode === "signup" && (
+        <div style={{ fontSize: 11.5, color: COLORS.muted, marginBottom: 14, lineHeight: 1.5 }}>
+          By creating an account, you agree to our{" "}
+          {onOpenLegal ? (
+            <a onClick={() => onOpenLegal("privacy")} style={{ color: COLORS.primary, fontWeight: 700, cursor: "pointer" }}>Privacy Policy</a>
+          ) : "Privacy Policy"}{" "}and{" "}
+          {onOpenLegal ? (
+            <a onClick={() => onOpenLegal("terms")} style={{ color: COLORS.primary, fontWeight: 700, cursor: "pointer" }}>Terms of Service</a>
+          ) : "Terms of Service"}.
         </div>
       )}
       <ErrorMsg msg={error} />
