@@ -320,6 +320,7 @@ function mapRealDoctorRow(row){
     slotDuration: row.slot_duration || 20, workingDays: row.working_days || [1,2,3,4,5,6],
     blockedDates: row.blocked_dates || [],
     clinicLat: row.clinic_lat || null, clinicLng: row.clinic_lng || null,
+    whatsappNumber: row.whatsapp_number || "",
     status: row.verified ? "approved" : "pending",
     consultTypes: row.consult_types || ["In-Clinic"],
     currentTokenByDate: {},
@@ -1610,6 +1611,16 @@ function DoctorProfileView({ ctx, doctor, patient, onBack, onBook }){
           <div style={{fontSize:11,color:COLORS.muted,fontWeight:600}}>{nextInfo.label}</div>
           <div style={{fontWeight:800,fontSize:16,display:"flex",alignItems:"center"}}><IndianRupee size={14}/>{doctor.fee}</div>
         </div>
+        {doctor.whatsappNumber && (
+          <button
+            className="mq-btn"
+            onClick={()=>window.open(`https://wa.me/91${doctor.whatsappNumber}?text=${encodeURIComponent(`Hi Dr. ${doctor.name}, I found you on AayuRahi and wanted to ask about an appointment.`)}`,"_blank")}
+            style={{width:46,height:46,borderRadius:14,background:"#25D366",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}
+            aria-label="Chat on WhatsApp"
+          >
+            <MessageCircle size={21} color="#fff" fill="#fff" />
+          </button>
+        )}
         <Btn size="lg" icon={Calendar} onClick={()=>onBook(doctor)}>{t("bookAppointment",ctx.language)}</Btn>
       </div>
     </div>
@@ -2850,6 +2861,7 @@ function DoctorProfileSettings({ ctx, doctor }){
           break_start: form.breakStart, break_end: form.breakEnd, slot_duration: form.slotDuration,
           working_days: form.workingDays, blocked_dates: form.blockedDates, consult_types: form.consultTypes,
           clinic_lat: form.clinicLat || null, clinic_lng: form.clinicLng || null,
+          whatsapp_number: form.whatsappNumber || null,
         }).eq("profile_id", doctor.id);
         if (form.name !== doctor.name) {
           await supabase.from("profiles").update({ full_name: form.name }).eq("id", doctor.id);
@@ -2912,6 +2924,9 @@ function DoctorProfileSettings({ ctx, doctor }){
               </button>
             </Card>
             <Field label="Full name"><TextInput value={form.name} onChange={e=>set("name",e.target.value)} /></Field>
+            <Field label="WhatsApp Number" hint="Optional. Lets patients message you directly on WhatsApp from your profile. Leave blank to hide this option.">
+              <TextInput value={form.whatsappNumber||""} onChange={e=>set("whatsappNumber",e.target.value.replace(/\D/g,"").slice(0,10))} placeholder="10-digit mobile number" />
+            </Field>
             <Field label="Specialization">
               <Select value={form.specialization} onChange={e=>set("specialization",e.target.value)}>{SPECIALTIES.map(s=><option key={s.name}>{s.name}</option>)}</Select>
             </Field>
