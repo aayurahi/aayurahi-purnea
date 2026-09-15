@@ -3,12 +3,14 @@ import { supabase } from "./supabaseClient";
 import Auth from "./Auth";
 import LegalPage from "./Legal";
 import EmergencyInfoPage from "./EmergencyInfo";
+import SymptomGuideModal from "./SymptomGuide";
 import { requestNotificationPermission, listenForForegroundMessages } from "./firebaseMessaging";
 import {
   Search, MapPin, Star, Clock, Calendar, User, Bell, Home as HomeIcon, Users,
   Stethoscope, CheckCircle2, XCircle, ChevronRight, ChevronLeft, Filter, Heart,
   LogOut, Settings, Plus, Minus, Pencil, Trash2, ArrowLeft, Phone, Mail, Award,
   Briefcase, IndianRupee, TrendingUp, AlertCircle, ShieldCheck, Ban, PlayCircle,
+  HelpCircle,
   RefreshCw, FileText, MoreHorizontal, X, Check, ChevronDown, Video, Building2,
   LayoutGrid, ClipboardList, ListChecks, UserCog, Tags, Hospital, MessageSquare,
   BarChart3, CalendarClock, CalendarX2, CalendarCheck2, ShieldAlert, Loader2,
@@ -18,7 +20,7 @@ import {
 /* ============================================================================
    CONSTANTS & TOKENS
 ============================================================================ */
-const SPECIALTIES = [
+export const SPECIALTIES = [
   { name: "General Physician", icon: Stethoscope },
   { name: "Cardiologist", icon: Heart },
   { name: "Dermatologist", icon: Sparkles },
@@ -1290,6 +1292,7 @@ function PatientApp({ ctx }){
 
 function PatientHome({ ctx, patient, onOpenDoctor, goSearch }){
   const [q, setQ] = useState("");
+  const [showSymptomGuide, setShowSymptomGuide] = useState(false);
   const approved = ctx.doctors.filter(d=>d.status==="approved" && !d.isDemo);
   const featured = useMemo(()=> [...approved].sort((a,b)=>b.rating-a.rating).slice(0,10), [approved]);
   const submit = () => goSearch(q);
@@ -1314,6 +1317,15 @@ function PatientHome({ ctx, patient, onOpenDoctor, goSearch }){
       </div>
 
       <div style={{padding:"18px 16px"}}>
+        <button className="mq-btn" onClick={()=>setShowSymptomGuide(true)} style={{width:"100%",background:COLORS.secondarySoft,border:`1.5px solid ${COLORS.secondary}`,borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+          <div style={{width:34,height:34,borderRadius:10,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><HelpCircle size={17} color={COLORS.secondary}/></div>
+          <div style={{flex:1,textAlign:"left"}}>
+            <div style={{fontWeight:800,fontSize:13,color:COLORS.secondary}}>{ctx.language==="hi"?"किस डॉक्टर से मिलें?":"Not Sure Who to See?"}</div>
+            <div style={{fontSize:11,color:COLORS.muted,marginTop:1}}>{ctx.language==="hi"?"अपने लक्षण चुनें":"Pick your symptom, we'll find the right doctor"}</div>
+          </div>
+          <ChevronRight size={17} color={COLORS.secondary}/>
+        </button>
+
         <SectionHeader title={t("browseBySpecialty",ctx.language)} />
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:22}}>
           {SPECIALTIES.slice(0,8).map(s => (
@@ -1329,6 +1341,13 @@ function PatientHome({ ctx, patient, onOpenDoctor, goSearch }){
           {featured.map(d => <DoctorCard key={d.id} doctor={d} onClick={()=>onOpenDoctor(d)} lang={ctx.language} />)}
         </div>
       </div>
+      {showSymptomGuide && (
+        <SymptomGuideModal
+          language={ctx.language}
+          onClose={()=>setShowSymptomGuide(false)}
+          onSelect={(specialty)=>{ setShowSymptomGuide(false); goSearch(specialty); }}
+        />
+      )}
     </div>
   );
 }
