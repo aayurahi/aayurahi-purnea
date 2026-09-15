@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { supabase } from "./supabaseClient";
 import Auth from "./Auth";
 import LegalPage from "./Legal";
+import EmergencyInfoPage from "./EmergencyInfo";
 import { requestNotificationPermission, listenForForegroundMessages } from "./firebaseMessaging";
 import {
   Search, MapPin, Star, Clock, Calendar, User, Bell, Home as HomeIcon, Users,
@@ -653,7 +654,12 @@ export default function App(){
     if (path === "/terms" || path === "/terms-of-service") return "terms";
     return null;
   })();
+  const emergencyPathMatch = (() => {
+    const path = window.location.pathname.replace(/\/+$/, "") || "/";
+    return path === "/emergency" || path === "/help";
+  })();
   const [legalOverlay, setLegalOverlay] = useState(null); // in-app: null | "privacy" | "terms"
+  const [emergencyOverlay, setEmergencyOverlay] = useState(false); // in-app overlay, works even before login
 
   const [booted, setBooted] = useState(false);
   const [session, setSession] = useState(null); // {role:'patient'|'doctor'|'admin', id}
@@ -945,7 +951,7 @@ export default function App(){
     updateDoctors, updatePatients, updateAppointments, updateReviews, updateNotifications, updateSpecialties,
     showToast, session, login, logout, refreshRealDoctors, uploadAvatar, syncAppt, refreshRealAppointments,
     unreadChats, refreshUnreadChats, refreshRealReviews, language, setLanguage,
-    deepLink, clearDeepLink, openLegal: setLegalOverlay
+    deepLink, clearDeepLink, openLegal: setLegalOverlay, openEmergency: ()=>setEmergencyOverlay(true)
   };
 
   if (legalPathMatch) {
@@ -953,6 +959,15 @@ export default function App(){
       <div className="mq-root" style={{maxWidth:520, margin:"0 auto", position:"relative", minHeight:"100vh", boxShadow:"0 0 40px rgba(15,27,45,0.06)"}}>
         <GlobalStyle />
         <LegalPage doc={legalPathMatch} standalone />
+      </div>
+    );
+  }
+
+  if (emergencyPathMatch) {
+    return (
+      <div className="mq-root" style={{maxWidth:520, margin:"0 auto", position:"relative", minHeight:"100vh", boxShadow:"0 0 40px rgba(15,27,45,0.06)"}}>
+        <GlobalStyle />
+        <EmergencyInfoPage standalone />
       </div>
     );
   }
@@ -965,7 +980,7 @@ export default function App(){
     <div className="mq-root" style={{maxWidth:520, margin:"0 auto", position:"relative", minHeight:"100vh", boxShadow:"0 0 40px rgba(15,27,45,0.06)"}}>
       <GlobalStyle />
       <Toast toast={toast} />
-      {!session && <Auth onAuthed={login} onOpenLegal={setLegalOverlay} />}
+      {!session && <Auth onAuthed={login} onOpenLegal={setLegalOverlay} onOpenEmergency={()=>setEmergencyOverlay(true)} />}
       {session?.role === "patient" && <PatientApp ctx={ctx} />}
       {session?.role === "doctor" && session.verified && <DoctorApp ctx={ctx} />}
       {session?.role === "doctor" && !session.verified && (
@@ -979,6 +994,11 @@ export default function App(){
       {legalOverlay && (
         <div style={{position:"absolute", inset:0, zIndex:1000, background:"#fff"}}>
           <LegalPage doc={legalOverlay} onBack={()=>setLegalOverlay(null)} />
+        </div>
+      )}
+      {emergencyOverlay && (
+        <div style={{position:"absolute", inset:0, zIndex:1001, background:"#fff"}}>
+          <EmergencyInfoPage onBack={()=>setEmergencyOverlay(false)} />
         </div>
       )}
     </div>
@@ -1283,11 +1303,14 @@ function PatientHome({ ctx, patient, onOpenDoctor, goSearch }){
           </div>
           <div style={{display:"flex",alignItems:"center",gap:6,color:COLORS.muted,fontSize:12.5,fontWeight:600}}><MapPin size={14}/> {CITY}</div>
         </div>
-        <div style={{position:"relative"}}>
+        <div style={{position:"relative", marginBottom:10}}>
           <Search size={18} style={{position:"absolute",left:14,top:14,color:COLORS.muted}} />
           <input className="mq-input" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder={t("searchPlaceholder",ctx.language)}
             style={{...inputStyle, paddingLeft:42, borderRadius:16, boxShadow:"0 4px 14px rgba(15,27,45,0.06)"}} />
         </div>
+        <button className="mq-btn" onClick={ctx.openEmergency} style={{width:"100%",background:COLORS.dangerSoft,border:`1.5px solid ${COLORS.danger}`,borderRadius:14,padding:"10px 14px",display:"flex",alignItems:"center",gap:8,color:COLORS.danger,fontWeight:800,fontSize:12.5}}>
+          <Phone size={15}/> {ctx.language==="hi"?"आपातकालीन नंबर व अस्पताल":"Emergency Numbers & Hospitals"}
+        </button>
       </div>
 
       <div style={{padding:"18px 16px"}}>
@@ -2339,6 +2362,9 @@ function PatientProfile({ ctx, patient, onOpenDoctor, onOpenFamily }){
           <button className="mq-btn" onClick={()=>ctx.openLegal("terms")} style={{background:"none",display:"flex",alignItems:"center",gap:10,padding:"8px 2px",textAlign:"left"}}>
             <FileText size={17} color={COLORS.muted} /><span style={{fontWeight:700,fontSize:13.5,flex:1}}>Terms of Service</span><ChevronRight size={16} color={COLORS.muted} />
           </button>
+          <button className="mq-btn" onClick={ctx.openEmergency} style={{background:"none",display:"flex",alignItems:"center",gap:10,padding:"8px 2px",textAlign:"left"}}>
+            <Phone size={17} color={COLORS.danger} /><span style={{fontWeight:700,fontSize:13.5,flex:1,color:COLORS.danger}}>Emergency Numbers & Hospitals</span><ChevronRight size={16} color={COLORS.muted} />
+          </button>
         </Card>
 
         <SectionHeader title={t("personalInformation",ctx.language)} action={<button className="mq-btn" onClick={()=>editing?save():setEditing(true)} style={{background:"none",color:COLORS.primary,fontWeight:700,fontSize:12.5,display:"flex",alignItems:"center",gap:4}}>{editing?<><Check size={14}/>{ctx.language==="hi"?"सेव करें":"Save"}</>:<><Pencil size={13}/>{ctx.language==="hi"?"संपादित करें":"Edit"}</>}</button>} />
@@ -2862,6 +2888,9 @@ function DoctorProfileSettings({ ctx, doctor }){
               <button className="mq-btn" onClick={()=>ctx.openLegal("terms")} style={{background:"none",display:"flex",alignItems:"center",gap:10,padding:"8px 2px",textAlign:"left"}}>
                 <FileText size={17} color={COLORS.muted} /><span style={{fontWeight:700,fontSize:13.5,flex:1}}>Terms of Service</span><ChevronRight size={16} color={COLORS.muted} />
               </button>
+              <button className="mq-btn" onClick={ctx.openEmergency} style={{background:"none",display:"flex",alignItems:"center",gap:10,padding:"8px 2px",textAlign:"left"}}>
+                <Phone size={17} color={COLORS.danger} /><span style={{fontWeight:700,fontSize:13.5,flex:1,color:COLORS.danger}}>Emergency Numbers & Hospitals</span><ChevronRight size={16} color={COLORS.muted} />
+              </button>
             </Card>
             <Field label="Full name"><TextInput value={form.name} onChange={e=>set("name",e.target.value)} /></Field>
             <Field label="Specialization">
@@ -2989,6 +3018,7 @@ function AdminApp({ ctx }){
           <MoreRow icon={Hospital} label="Clinics" onClick={()=>{setTab("clinics");setMore(false);}} />
           <MoreRow icon={ShieldCheck} label="Privacy Policy" onClick={()=>{setMore(false);ctx.openLegal("privacy");}} />
           <MoreRow icon={FileText} label="Terms of Service" onClick={()=>{setMore(false);ctx.openLegal("terms");}} />
+          <MoreRow icon={Phone} label="Emergency Numbers & Hospitals" onClick={()=>{setMore(false);ctx.openEmergency();}} />
           <MoreRow icon={LogOut} label="Logout" danger onClick={()=>ctx.logout()} />
         </div>
       </Modal>

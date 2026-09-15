@@ -59,7 +59,7 @@ function ErrorMsg({ msg }) {
 }
 
 /* --------------------------- Landing choice --------------------------- */
-export default function Auth({ onAuthed, onOpenLegal }) {
+export default function Auth({ onAuthed, onOpenLegal, onOpenEmergency }) {
   const [screen, setScreen] = useState("landing"); // landing | email | phone | doctorApply | pendingDoctor
   const [pendingProfile, setPendingProfile] = useState(null);
   const [lang, setLang] = useState(() => localStorage.getItem("mq_lang") || "en");
@@ -95,6 +95,13 @@ export default function Auth({ onAuthed, onOpenLegal }) {
           <a onClick={() => onOpenLegal("privacy")} style={{ color: COLORS.muted, cursor: "pointer", textDecoration: "underline" }}>Privacy Policy</a>
           {"  ·  "}
           <a onClick={() => onOpenLegal("terms")} style={{ color: COLORS.muted, cursor: "pointer", textDecoration: "underline" }}>Terms of Service</a>
+        </div>
+      )}
+      {onOpenEmergency && (
+        <div style={{ textAlign: "center", marginTop: 14 }}>
+          <button onClick={onOpenEmergency} style={{ background: "none", border: "none", color: COLORS.danger, fontWeight: 700, fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <Phone size={13} /> Emergency Numbers
+          </button>
         </div>
       )}
     </Shell>
