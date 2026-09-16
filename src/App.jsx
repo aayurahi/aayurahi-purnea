@@ -14,7 +14,8 @@ import {
   RefreshCw, FileText, MoreHorizontal, X, Check, ChevronDown, Video, Building2,
   LayoutGrid, ClipboardList, ListChecks, UserCog, Tags, Hospital, MessageSquare,
   BarChart3, CalendarClock, CalendarX2, CalendarCheck2, ShieldAlert, Loader2,
-  Upload, ThumbsUp, BellRing, ChevronUp, Sparkles, Camera, Send, Image as ImageIcon, MessageCircle
+  Upload, ThumbsUp, BellRing, ChevronUp, Sparkles, Camera, Send, Image as ImageIcon, MessageCircle,
+  Navigation
 } from "lucide-react";
 
 /* ============================================================================
@@ -365,6 +366,22 @@ function getAllClinics(doctor){
     slotDuration: doctor.slotDuration, workingDays: doctor.workingDays, blockedDates: doctor.blockedDates,
   };
   return [primary, ...(doctor.extraClinics || [])];
+}
+
+// Straight-line distance in km between two lat/lng points (Haversine formula).
+function haversineKm(lat1, lng1, lat2, lng2){
+  const R = 6371;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLng = (lng2-lng1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+// Distance to a doctor's nearest clinic (checks all their locations, not just
+// the primary one) — null if neither the doctor nor the user has a location.
+function nearestClinicDistanceKm(doctor, userLat, userLng){
+  const withLocation = getAllClinics(doctor).filter(c=>c.clinicLat && c.clinicLng);
+  if (!withLocation.length) return null;
+  return Math.min(...withLocation.map(c=>haversineKm(userLat, userLng, c.clinicLat, c.clinicLng)));
 }
 
 // Given a booked appointment, returns the specific clinic it was booked at
@@ -1408,7 +1425,7 @@ function SectionHeader({ title, subtitle, action }){
   );
 }
 
-function DoctorCard({ doctor, onClick, onFav, isFav, lang="en" }){
+function DoctorCard({ doctor, onClick, onFav, isFav, lang="en", distanceKm }){
   const nextSlotInfo = getNextAvailableLabel(doctor, lang);
   return (
     <Card hover onClick={onClick} style={{display:"flex",gap:12}}>
@@ -1428,6 +1445,7 @@ function DoctorCard({ doctor, onClick, onFav, isFav, lang="en" }){
         <div style={{fontSize:12,color:COLORS.muted,marginTop:4,display:"flex",gap:10,flexWrap:"wrap"}}>
           <span style={{display:"flex",alignItems:"center",gap:3}}><Briefcase size={11}/> {doctor.experience} {t("yrs",lang)}</span>
           <span style={{display:"flex",alignItems:"center",gap:3}}><MapPin size={11}/> {doctor.area}</span>
+          {distanceKm!=null && <span style={{display:"flex",alignItems:"center",gap:3,color:COLORS.primary,fontWeight:700}}><Navigation size={11}/> {distanceKm<1?`${Math.round(distanceKm*1000)} m`:`${distanceKm.toFixed(1)} km`}</span>}
         </div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:9}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -1466,7 +1484,18 @@ function PatientSearch({ ctx, initialQuery="", onOpenDoctor }){
   const [minExp, setMinExp] = useState(0);
   const [minRating, setMinRating] = useState(0);
   const [sortBy, setSortBy] = useState("rating");
+  const [userLoc, setUserLoc] = useState(null);
+  const [locatingUser, setLocatingUser] = useState(false);
   useEffect(()=>setQ(initialQuery), [initialQuery]);
+
+  const findNearMe = () => {
+    if (!navigator.geolocation) { ctx.showToast("Location not supported on this device","danger"); return; }
+    setLocatingUser(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos)=>{ setUserLoc({lat:pos.coords.latitude,lng:pos.coords.longitude}); setSortBy("nearest"); setLocatingUser(false); },
+      ()=>{ ctx.showToast("Could not get your location — check location permission","danger"); setLocatingUser(false); }
+    );
+  };
 
   const results = useMemo(() => {
     let list = ctx.doctors.filter(d=>d.status==="approved" && !d.isDemo);
@@ -1477,12 +1506,21 @@ function PatientSearch({ ctx, initialQuery="", onOpenDoctor }){
     if (spec!=="All") list = list.filter(d=>d.specialization===spec);
     if (area!=="All") list = list.filter(d=>d.area===area);
     list = list.filter(d=>d.fee<=maxFee && d.experience>=minExp && d.rating>=minRating);
-    if (sortBy==="rating") list = [...list].sort((a,b)=>b.rating-a.rating);
-    if (sortBy==="fee_low") list = [...list].sort((a,b)=>a.fee-b.fee);
-    if (sortBy==="fee_high") list = [...list].sort((a,b)=>b.fee-a.fee);
-    if (sortBy==="experience") list = [...list].sort((a,b)=>b.experience-a.experience);
+    if (sortBy==="nearest" && userLoc){
+      list = list.map(d=>({...d, _distanceKm: nearestClinicDistanceKm(d, userLoc.lat, userLoc.lng)}));
+      list = [...list].sort((a,b)=>{
+        if (a._distanceKm==null && b._distanceKm==null) return 0;
+        if (a._distanceKm==null) return 1;
+        if (b._distanceKm==null) return -1;
+        return a._distanceKm - b._distanceKm;
+      });
+    }
+    else if (sortBy==="rating") list = [...list].sort((a,b)=>b.rating-a.rating);
+    else if (sortBy==="fee_low") list = [...list].sort((a,b)=>a.fee-b.fee);
+    else if (sortBy==="fee_high") list = [...list].sort((a,b)=>b.fee-a.fee);
+    else if (sortBy==="experience") list = [...list].sort((a,b)=>b.experience-a.experience);
     return list;
-  }, [ctx.doctors, q, spec, area, maxFee, minExp, minRating, sortBy]);
+  }, [ctx.doctors, q, spec, area, maxFee, minExp, minRating, sortBy, userLoc]);
 
   return (
     <div className="mq-fade-in">
@@ -1494,6 +1532,9 @@ function PatientSearch({ ctx, initialQuery="", onOpenDoctor }){
           </div>
           <button className="mq-btn" onClick={()=>setShowFilters(true)} style={{background:COLORS.primarySoft,borderRadius:12,width:44,display:"flex",alignItems:"center",justifyContent:"center"}}>
             <Filter size={18} color={COLORS.primary} />
+          </button>
+          <button className="mq-btn" onClick={findNearMe} style={{background:sortBy==="nearest"?COLORS.primary:COLORS.primarySoft,borderRadius:12,width:44,display:"flex",alignItems:"center",justifyContent:"center"}} aria-label="Sort by nearest">
+            {locatingUser ? <Loader2 size={18} color={sortBy==="nearest"?"#fff":COLORS.primary} style={{animation:"spin 1s linear infinite"}}/> : <Navigation size={18} color={sortBy==="nearest"?"#fff":COLORS.primary} />}
           </button>
         </div>
         <div className="mq-scroll" style={{display:"flex",gap:7,overflowX:"auto",marginTop:10,paddingBottom:2}}>
@@ -1508,7 +1549,7 @@ function PatientSearch({ ctx, initialQuery="", onOpenDoctor }){
           <EmptyState icon={Search} title={t("noDoctorsFound",ctx.language)} subtitle="Try adjusting your filters or search terms" action={<Btn variant="outline" onClick={()=>{setSpec("All");setArea("All");setMaxFee(3000);setMinExp(0);setMinRating(0);setQ("");}}>Clear filters</Btn>} />
         ) : (
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            {results.map(d => <DoctorCard key={d.id} doctor={d} onClick={()=>onOpenDoctor(d)} lang={ctx.language} />)}
+            {results.map(d => <DoctorCard key={d.id} doctor={d} onClick={()=>onOpenDoctor(d)} lang={ctx.language} distanceKm={d._distanceKm} />)}
           </div>
         )}
       </div>
@@ -1532,8 +1573,9 @@ function PatientSearch({ ctx, initialQuery="", onOpenDoctor }){
           <input type="range" min={0} max={5} step={0.5} value={minRating} onChange={e=>setMinRating(Number(e.target.value))} style={{width:"100%"}} />
         </Field>
         <Field label="Sort by">
-          <Select value={sortBy} onChange={e=>setSortBy(e.target.value)}>
+          <Select value={sortBy} onChange={e=>{ if (e.target.value==="nearest" && !userLoc) { findNearMe(); } else { setSortBy(e.target.value); } }}>
             <option value="rating">Highest rated</option>
+            <option value="nearest">Nearest to me</option>
             <option value="fee_low">Fee: Low to High</option>
             <option value="fee_high">Fee: High to Low</option>
             <option value="experience">Most experienced</option>
