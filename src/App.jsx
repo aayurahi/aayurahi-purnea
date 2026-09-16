@@ -4,6 +4,7 @@ import Auth from "./Auth";
 import LegalPage from "./Legal";
 import EmergencyInfoPage from "./EmergencyInfo";
 import SymptomGuideModal from "./SymptomGuide";
+import { PatientHealthCard, QRScannerModal, AAYURAHI_QR_PREFIX } from "./HealthCard";
 import { requestNotificationPermission, listenForForegroundMessages } from "./firebaseMessaging";
 import {
   Search, MapPin, Star, Clock, Calendar, User, Bell, Home as HomeIcon, Users,
@@ -15,7 +16,8 @@ import {
   LayoutGrid, ClipboardList, ListChecks, UserCog, Tags, Hospital, MessageSquare,
   BarChart3, CalendarClock, CalendarX2, CalendarCheck2, ShieldAlert, Loader2,
   Upload, ThumbsUp, BellRing, ChevronUp, Sparkles, Camera, Send, Image as ImageIcon, MessageCircle,
-  Navigation
+  Navigation,
+  ScanLine,
 } from "lucide-react";
 
 /* ============================================================================
@@ -2104,6 +2106,7 @@ function AppointmentDetail({ ctx, appt, patient, onBack }){
   const [showReschedule, setShowReschedule] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [showPrescription, setShowPrescription] = useState(false);
+  const [showHealthCard, setShowHealthCard] = useState(false);
   if (!appt) return <LoadingState />;
   const doc = ctx.doctors.find(d=>d.id===appt.doctorId);
   const currentToken = doc?.currentTokenByDate?.[appt.date] || 0;
@@ -2123,6 +2126,9 @@ function AppointmentDetail({ ctx, appt, patient, onBack }){
     <div className="mq-fade-in">
       <TopBar title="Appointment Details" onBack={onBack} />
       <div style={{padding:16}}>
+        {isToday && ["pending","confirmed"].includes(appt.status) && (
+          <Btn full icon={ScanLine} onClick={()=>setShowHealthCard(true)} style={{marginBottom:14}}>Show Health Card to Check In</Btn>
+        )}
         {isToday && ["confirmed","arrived"].includes(appt.status) && (
           <Card style={{marginBottom:14, background:`linear-gradient(135deg, ${COLORS.primary}, ${COLORS.primaryDark})`,color:"#fff",border:"none"}}>
             <div style={{fontSize:11.5,fontWeight:700,opacity:0.85,marginBottom:8,display:"flex",alignItems:"center",gap:5}}><BellRing size={13}/> LIVE QUEUE STATUS</div>
@@ -2196,6 +2202,7 @@ function AppointmentDetail({ ctx, appt, patient, onBack }){
 
       <RescheduleModal open={showReschedule} onClose={()=>setShowReschedule(false)} ctx={ctx} appt={appt} doctor={doc} patient={patient} />
       <ReviewModal open={showReview} onClose={()=>setShowReview(false)} ctx={ctx} appt={appt} patient={patient} />
+      {showHealthCard && <PatientHealthCard patient={patient} onBack={()=>setShowHealthCard(false)} />}
     </div>
   );
 }
@@ -2480,6 +2487,7 @@ function PatientNotifications({ ctx, patient }){
 function PatientProfile({ ctx, patient, onOpenDoctor, onOpenFamily }){
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(patient);
+  const [showHealthCard, setShowHealthCard] = useState(false);
   const favDoctors = ctx.doctors.filter(d=>patient.favorites?.includes(d.id));
   const mine = ctx.appointments.filter(a=>a.patientId===patient.id);
   const completed = mine.filter(a=>a.status==="completed").length;
@@ -2542,6 +2550,15 @@ function PatientProfile({ ctx, patient, onOpenDoctor, onOpenFamily }){
           </button>
         </Card>
 
+        <button className="mq-btn" onClick={()=>setShowHealthCard(true)} style={{width:"100%",background:`linear-gradient(135deg, ${COLORS.primary}, ${COLORS.primaryDark})`,borderRadius:16,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,marginBottom:20,color:"#fff"}}>
+          <div style={{width:38,height:38,borderRadius:11,background:"rgba(255,255,255,0.18)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ScanLine size={18}/></div>
+          <div style={{flex:1,textAlign:"left"}}>
+            <div style={{fontWeight:800,fontSize:13.5}}>My Health Card</div>
+            <div style={{fontSize:11,opacity:0.85,marginTop:1}}>Show your QR code for a faster check-in</div>
+          </div>
+          <ChevronRight size={17}/>
+        </button>
+
         <SectionHeader title={t("personalInformation",ctx.language)} action={<button className="mq-btn" onClick={()=>editing?save():setEditing(true)} style={{background:"none",color:COLORS.primary,fontWeight:700,fontSize:12.5,display:"flex",alignItems:"center",gap:4}}>{editing?<><Check size={14}/>{ctx.language==="hi"?"सेव करें":"Save"}</>:<><Pencil size={13}/>{ctx.language==="hi"?"संपादित करें":"Edit"}</>}</button>} />
         <Card style={{marginBottom:20}}>
           {editing ? (
@@ -2571,6 +2588,7 @@ function PatientProfile({ ctx, patient, onOpenDoctor, onOpenFamily }){
           </div>
         )}
       </div>
+      {showHealthCard && <PatientHealthCard patient={patient} onBack={()=>setShowHealthCard(false)} />}
     </div>
   );
 }
@@ -2877,9 +2895,33 @@ function DoctorRescheduleModal({ open, onClose, ctx, appt, doctor }){
 function DoctorQueue({ ctx, doctor }){
   const todayStr = fmtDate(new Date());
   const [selDate, setSelDate] = useState(todayStr);
+  const [showScanner, setShowScanner] = useState(false);
   const dayAppts = ctx.appointments.filter(a=>a.doctorId===doctor.id && a.date===selDate && ["confirmed","arrived","completed"].includes(a.status)).sort((a,b)=>a.tokenNumber-b.tokenNumber);
   const currentToken = doctor.currentTokenByDate?.[selDate] || 0;
   const waiting = dayAppts.filter(a=>a.tokenNumber>currentToken && a.status!=="completed");
+
+  const handleScan = (decoded) => {
+    setShowScanner(false);
+    if (!decoded.startsWith(AAYURAHI_QR_PREFIX)) {
+      ctx.showToast("That doesn't look like an AayuRahi health card","danger");
+      return;
+    }
+    const patientId = decoded.slice(AAYURAHI_QR_PREFIX.length);
+    const todaysForPatient = ctx.appointments
+      .filter(a=>a.doctorId===doctor.id && a.patientId===patientId && a.date===todayStr && ["pending","confirmed","arrived"].includes(a.status))
+      .sort((a,b)=>a.time.localeCompare(b.time));
+    if (todaysForPatient.length===0) {
+      ctx.showToast("No appointment found for this patient today","danger");
+      return;
+    }
+    const target = todaysForPatient[0];
+    if (target.status==="pending") {
+      ctx.syncAppt(target.id, {status:"confirmed"});
+      ctx.showToast(`Checked in: ${target.patientName} — Token #${target.tokenNumber}`);
+    } else {
+      ctx.showToast(`${target.patientName} already checked in — Token #${target.tokenNumber}`,"primary");
+    }
+  };
 
   const setToken = (n) => {
     ctx.updateDoctors(prev => prev.map(d=>d.id===doctor.id?{...d, currentTokenByDate:{...d.currentTokenByDate, [selDate]:n}}:d));
@@ -2914,6 +2956,10 @@ function DoctorQueue({ ctx, doctor }){
           </div>
         </Field>
 
+        <Btn full variant="outline" icon={ScanLine} onClick={()=>setShowScanner(true)} style={{marginBottom:16}}>
+          Scan Health Card to Check In
+        </Btn>
+
         <Card style={{background:`linear-gradient(135deg, ${COLORS.primary}, ${COLORS.primaryDark})`,color:"#fff",border:"none",marginBottom:16}}>
           <div style={{fontSize:11,fontWeight:700,opacity:0.85,marginBottom:6,letterSpacing:0.5}}>NOW SERVING</div>
           <div className="mq-display mq-pulse" style={{fontSize:52,fontWeight:800,textAlign:"center",padding:"6px 0",borderRadius:12}}>{currentToken || "–"}</div>
@@ -2940,6 +2986,7 @@ function DoctorQueue({ ctx, doctor }){
           </div>
         )}
       </div>
+      {showScanner && <QRScannerModal onDetect={handleScan} onClose={()=>setShowScanner(false)} />}
     </div>
   );
 }
