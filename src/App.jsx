@@ -336,6 +336,46 @@ function mapRealDoctorRow(row){
   };
 }
 
+// Turns a real Supabase 'doctor_clinics' row (an additional clinic location,
+// beyond the doctor's primary one on the `doctors` table) into the same
+// clinic shape used everywhere else — see getAllClinics() below.
+function mapRealClinicRow(row){
+  return {
+    id: row.id, isPrimary: false,
+    clinicName: row.clinic_name || "", address: row.address || "", area: row.area || "", city: CITY,
+    clinicLat: row.lat || null, clinicLng: row.lng || null,
+    startTime: row.start_time || "09:00", endTime: row.end_time || "17:00",
+    breakStart: row.break_start || "13:00", breakEnd: row.break_end || "13:45",
+    slotDuration: row.slot_duration || 20, workingDays: row.working_days || [1,2,3,4,5,6],
+    blockedDates: row.blocked_dates || [],
+  };
+}
+
+// Returns every clinic a doctor practices at, in one consistent shape — the
+// doctor's original/primary clinic (the flat fields on the doctors table,
+// unchanged, always first and marked isPrimary) followed by any additional
+// clinics they've added (doctor.extraClinics, from the doctor_clinics table).
+function getAllClinics(doctor){
+  const primary = {
+    id: "primary", isPrimary: true,
+    clinicName: doctor.clinicName, address: doctor.address, area: doctor.area, city: doctor.city,
+    clinicLat: doctor.clinicLat, clinicLng: doctor.clinicLng,
+    startTime: doctor.startTime, endTime: doctor.endTime,
+    breakStart: doctor.breakStart, breakEnd: doctor.breakEnd,
+    slotDuration: doctor.slotDuration, workingDays: doctor.workingDays, blockedDates: doctor.blockedDates,
+  };
+  return [primary, ...(doctor.extraClinics || [])];
+}
+
+// Given a booked appointment, returns the specific clinic it was booked at
+// (falls back to the doctor's primary clinic for old appointments booked
+// before multi-clinic support existed, or if that clinic was since removed).
+function getClinicForAppointment(doctor, appt){
+  const clinics = getAllClinics(doctor);
+  if (!appt?.clinicId) return clinics[0];
+  return clinics.find(c => c.id === appt.clinicId) || clinics[0];
+}
+
 // Turns a real Supabase 'appointments' row into the same shape the rest of
 // the app already expects (matches the local demo appointment shape).
 function mapRealAppointmentRow(row){
@@ -346,6 +386,7 @@ function mapRealAppointmentRow(row){
     fee: row.fee || 0, reason: row.reason || "General consultation",
     patientName: row.patient_name || "", patientPhone: row.patient_phone || "",
     patientAge: row.patient_age || "", patientGender: row.patient_gender || "",
+    clinicId: row.clinic_id || null, clinicName: row.clinic_name || "", clinicAddress: row.clinic_address || "",
     createdAt: row.created_at || new Date().toISOString(), rescheduled: !!row.rescheduled,
     isDemo: false,
   };
@@ -780,7 +821,10 @@ export default function App(){
   // applications). Demo/preview doctors are kept separate and untouched.
   const refreshRealDoctors = async () => {
     const { data: rows } = await supabase.from("doctors").select("*, profiles(full_name, avatar_url)");
-    const realMapped = (rows || []).map(mapRealDoctorRow);
+    const { data: clinicRows } = await supabase.from("doctor_clinics").select("*").order("created_at", { ascending: true });
+    const clinicsByDoctor = {};
+    (clinicRows || []).forEach(c => { (clinicsByDoctor[c.doctor_id] ||= []).push(mapRealClinicRow(c)); });
+    const realMapped = (rows || []).map(row => ({ ...mapRealDoctorRow(row), extraClinics: clinicsByDoctor[row.profile_id] || [] }));
     setDoctors(prev => [...prev.filter(d => d.isDemo), ...realMapped]);
   };
 
@@ -1271,8 +1315,8 @@ function PatientApp({ ctx }){
   if (!patient) return <LoadingState />;
 
   let content;
-  if (view.name === "doctorProfile") content = <DoctorProfileView ctx={ctx} doctor={ctx.doctors.find(d=>d.id===view.doctorId)} patient={patient} onBack={()=>setView({name:tab})} onBook={(doc)=>setView({name:"booking", doctorId:doc.id})} />;
-  else if (view.name === "booking") content = <BookingFlow ctx={ctx} doctor={ctx.doctors.find(d=>d.id===view.doctorId)} patient={patient} onDone={()=>{ setTab("appointments"); setView({name:"appointments"}); }} onBack={()=>setView({name:"doctorProfile", doctorId:view.doctorId})} />;
+  if (view.name === "doctorProfile") content = <DoctorProfileView ctx={ctx} doctor={ctx.doctors.find(d=>d.id===view.doctorId)} patient={patient} onBack={()=>setView({name:tab})} onBook={(doc,clinicId)=>setView({name:"booking", doctorId:doc.id, clinicId})} />;
+  else if (view.name === "booking") content = <BookingFlow ctx={ctx} doctor={ctx.doctors.find(d=>d.id===view.doctorId)} patient={patient} initialClinicId={view.clinicId} onDone={()=>{ setTab("appointments"); setView({name:"appointments"}); }} onBack={()=>setView({name:"doctorProfile", doctorId:view.doctorId})} />;
   else if (view.name === "appointmentDetail") content = <AppointmentDetail ctx={ctx} appt={ctx.appointments.find(a=>a.id===view.apptId)} patient={patient} onBack={()=>setView({name:"appointments"})} />;
   else if (view.name === "chatConversation") content = <ChatConversation ctx={ctx} chatId={view.chatId} onBack={()=>setView({name:"messages"})} />;
   else if (view.name === "familyMembers") content = <FamilyMembersScreen ctx={ctx} patient={patient} onBack={()=>setView({name:"profile"})} />;
@@ -1543,44 +1587,69 @@ function DoctorProfileView({ ctx, doctor, patient, onBack, onBook }){
           <div style={{fontSize:13.5,color:COLORS.muted,lineHeight:1.6}}>{doctor.about}</div>
         </Card>
 
-        <Card style={{marginBottom:14}}>
-          <SectionHeader title={t("clinicAndTimings",ctx.language)} />
-          <div style={{display:"flex",gap:10,marginBottom:8}}>
-            <Building2 size={16} color={COLORS.muted} style={{marginTop:1,flexShrink:0}} />
-            <div>
-              <div style={{fontWeight:700,fontSize:13.5}}>{doctor.clinicName}</div>
-              <div style={{fontSize:12.5,color:COLORS.muted}}>{doctor.address}</div>
+        {getAllClinics(doctor).length === 1 ? (
+          <Card style={{marginBottom:14}}>
+            <SectionHeader title={t("clinicAndTimings",ctx.language)} />
+            <div style={{display:"flex",gap:10,marginBottom:8}}>
+              <Building2 size={16} color={COLORS.muted} style={{marginTop:1,flexShrink:0}} />
+              <div>
+                <div style={{fontWeight:700,fontSize:13.5}}>{doctor.clinicName}</div>
+                <div style={{fontSize:12.5,color:COLORS.muted}}>{doctor.address}</div>
+              </div>
             </div>
-          </div>
-          <div style={{display:"flex",gap:10,marginBottom:8}}>
-            <Clock size={16} color={COLORS.muted} style={{marginTop:1,flexShrink:0}} />
-            <div style={{fontSize:12.5,color:COLORS.muted}}>
-              {fmtTime12(doctor.startTime)} – {fmtTime12(doctor.endTime)} <br/>
-              {t("workingDays",ctx.language)}: {doctor.workingDays.map(d=>translateDay(DAY_NAMES[d],ctx.language)).join(", ")}
+            <div style={{display:"flex",gap:10,marginBottom:8}}>
+              <Clock size={16} color={COLORS.muted} style={{marginTop:1,flexShrink:0}} />
+              <div style={{fontSize:12.5,color:COLORS.muted}}>
+                {fmtTime12(doctor.startTime)} – {fmtTime12(doctor.endTime)} <br/>
+                {t("workingDays",ctx.language)}: {doctor.workingDays.map(d=>translateDay(DAY_NAMES[d],ctx.language)).join(", ")}
+              </div>
             </div>
-          </div>
-          <div style={{display:"flex",gap:10,marginBottom:4}}>
-            <MapPin size={16} color={COLORS.muted} style={{marginTop:1,flexShrink:0}} />
-            <div style={{fontSize:12.5,color:COLORS.muted}}>{doctor.area}, {doctor.city}</div>
-          </div>
-          <div style={{borderRadius:12,overflow:"hidden",marginTop:8,border:`1px solid ${COLORS.border}`}}>
-            <iframe
-              title="Clinic location"
-              width="100%" height="140" style={{display:"block",border:0}}
-              loading="lazy"
-              src={doctor.clinicLat && doctor.clinicLng
-                ? `https://www.google.com/maps?q=${doctor.clinicLat},${doctor.clinicLng}&output=embed`
-                : `https://www.google.com/maps?q=${encodeURIComponent(`${doctor.clinicName}, ${doctor.address}, ${doctor.area}, ${doctor.city}`)}&output=embed`}
-            />
-          </div>
-          <Btn full variant="outline" icon={MapPin} style={{marginTop:10}} onClick={()=>window.open(
-            doctor.clinicLat && doctor.clinicLng
-              ? `https://www.google.com/maps/dir/?api=1&destination=${doctor.clinicLat},${doctor.clinicLng}`
-              : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${doctor.clinicName}, ${doctor.address}, ${doctor.area}, ${doctor.city}`)}`,
-            "_blank")}>
-            {t("getDirections",ctx.language)}
-          </Btn>
-        </Card>
+            <div style={{display:"flex",gap:10,marginBottom:4}}>
+              <MapPin size={16} color={COLORS.muted} style={{marginTop:1,flexShrink:0}} />
+              <div style={{fontSize:12.5,color:COLORS.muted}}>{doctor.area}, {doctor.city}</div>
+            </div>
+            <div style={{borderRadius:12,overflow:"hidden",marginTop:8,border:`1px solid ${COLORS.border}`}}>
+              <iframe
+                title="Clinic location"
+                width="100%" height="140" style={{display:"block",border:0}}
+                loading="lazy"
+                src={doctor.clinicLat && doctor.clinicLng
+                  ? `https://www.google.com/maps?q=${doctor.clinicLat},${doctor.clinicLng}&output=embed`
+                  : `https://www.google.com/maps?q=${encodeURIComponent(`${doctor.clinicName}, ${doctor.address}, ${doctor.area}, ${doctor.city}`)}&output=embed`}
+              />
+            </div>
+            <Btn full variant="outline" icon={MapPin} style={{marginTop:10}} onClick={()=>window.open(
+              doctor.clinicLat && doctor.clinicLng
+                ? `https://www.google.com/maps/dir/?api=1&destination=${doctor.clinicLat},${doctor.clinicLng}`
+                : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${doctor.clinicName}, ${doctor.address}, ${doctor.area}, ${doctor.city}`)}`,
+              "_blank")}>
+              {t("getDirections",ctx.language)}
+            </Btn>
+          </Card>
+        ) : (
+          <Card style={{marginBottom:14}}>
+            <SectionHeader title={`${t("clinicAndTimings",ctx.language)} (${getAllClinics(doctor).length} locations)`} />
+            {getAllClinics(doctor).map((c,i)=>(
+              <div key={c.id} style={{borderTop: i>0 ? `1px solid ${COLORS.border}` : "none", paddingTop: i>0?14:0, marginTop: i>0?14:0}}>
+                <div style={{display:"flex",gap:10,marginBottom:8}}>
+                  <Building2 size={16} color={COLORS.muted} style={{marginTop:1,flexShrink:0}} />
+                  <div>
+                    <div style={{fontWeight:700,fontSize:13.5}}>{c.clinicName}{c.isPrimary && <span style={{color:COLORS.muted,fontWeight:600}}> (Primary)</span>}</div>
+                    <div style={{fontSize:12.5,color:COLORS.muted}}>{c.address}{c.area?`, ${c.area}`:""}</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:10,marginBottom:10}}>
+                  <Clock size={16} color={COLORS.muted} style={{marginTop:1,flexShrink:0}} />
+                  <div style={{fontSize:12.5,color:COLORS.muted}}>
+                    {fmtTime12(c.startTime)} – {fmtTime12(c.endTime)} <br/>
+                    {t("workingDays",ctx.language)}: {c.workingDays.map(d=>translateDay(DAY_NAMES[d],ctx.language)).join(", ")}
+                  </div>
+                </div>
+                <Btn full variant="outline" icon={Calendar} onClick={()=>onBook(doctor, c.id)}>Book at this clinic</Btn>
+              </div>
+            ))}
+          </Card>
+        )}
 
         <Card style={{marginBottom:14}}>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -1637,15 +1706,16 @@ function MiniStat({ icon:Icon, label, value }){
 }
 
 /* ---------- Booking Flow ---------- */
-function getSlotsForDate(doctor, date, appointments){
-  if (!doctor.workingDays.includes(dayOfWeek(date))) return [];
-  if (doctor.blockedDates?.includes(date)) return [];
-  const startMin = timeToMinutes(doctor.startTime);
-  const endMin = timeToMinutes(doctor.endTime);
-  const breakStart = timeToMinutes(doctor.breakStart);
-  const breakEnd = timeToMinutes(doctor.breakEnd);
-  const dur = doctor.slotDuration;
-  const taken = new Set(appointments.filter(a=>a.doctorId===doctor.id && a.date===date && !["cancelled","rejected"].includes(a.status)).map(a=>a.time));
+function getSlotsForDate(clinic, date, appointments, doctorId){
+  const dId = doctorId || clinic.id;
+  if (!clinic.workingDays.includes(dayOfWeek(date))) return [];
+  if (clinic.blockedDates?.includes(date)) return [];
+  const startMin = timeToMinutes(clinic.startTime);
+  const endMin = timeToMinutes(clinic.endTime);
+  const breakStart = timeToMinutes(clinic.breakStart);
+  const breakEnd = timeToMinutes(clinic.breakEnd);
+  const dur = clinic.slotDuration;
+  const taken = new Set(appointments.filter(a=>a.doctorId===dId && a.date===date && !["cancelled","rejected"].includes(a.status)).map(a=>a.time));
   const now = new Date();
   const isToday = date === fmtDate(now);
   const nowMin = now.getHours()*60+now.getMinutes();
@@ -1659,8 +1729,11 @@ function getSlotsForDate(doctor, date, appointments){
   return slots;
 }
 
-function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
-  const [step, setStep] = useState(1);
+function BookingFlow({ ctx, doctor, patient, onDone, onBack, initialClinicId }){
+  const clinics = doctor ? getAllClinics(doctor) : [];
+  const multiClinic = clinics.length > 1;
+  const [selectedClinicId, setSelectedClinicId] = useState(initialClinicId || (multiClinic ? null : clinics[0]?.id));
+  const [step, setStep] = useState(selectedClinicId ? 1 : 0);
   const [type, setType] = useState(doctor?.consultTypes?.[0] || "In-Clinic");
   const [date, setDate] = useState(null);
   const [time, setTime] = useState(null);
@@ -1684,8 +1757,9 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
   };
 
   if (!doctor) return <LoadingState />;
-  const dates = next14Days().filter(d => doctor.workingDays.includes(dayOfWeek(d)) && !doctor.blockedDates?.includes(d));
-  const slots = date ? getSlotsForDate(doctor, date, ctx.appointments) : [];
+  const selectedClinic = clinics.find(c=>c.id===selectedClinicId) || clinics[0];
+  const dates = selectedClinic ? next14Days().filter(d => selectedClinic.workingDays.includes(dayOfWeek(d)) && !selectedClinic.blockedDates?.includes(d)) : [];
+  const slots = date && selectedClinic ? getSlotsForDate(selectedClinic, date, ctx.appointments, doctor.id) : [];
 
   const set = (k,v)=>setForm(f=>({...f,[k]:v}));
 
@@ -1696,10 +1770,12 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
     }
     const existingForDate = ctx.appointments.filter(a=>a.doctorId===doctor.id && a.date===date && !["cancelled","rejected"].includes(a.status));
     const tokenNumber = existingForDate.length + 1;
+    const clinicId = selectedClinic.isPrimary ? null : selectedClinic.id;
     const base = {
       doctorId: doctor.id, patientId: patient.id, date, time, type,
       status:"pending", tokenNumber, fee: doctor.fee, reason: form.reason || "General consultation",
       patientName: form.name, patientPhone: form.phone, patientAge: form.age, patientGender: form.gender,
+      clinicId, clinicName: selectedClinic.clinicName, clinicAddress: selectedClinic.address,
       createdAt: new Date().toISOString(), rescheduled:false
     };
     if (doctor.isDemo) {
@@ -1720,7 +1796,8 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
         patient_id: patient.id, doctor_id: doctor.id, appt_date: date, appt_time: time,
         consult_type: type, status: "pending", token_number: tokenNumber, fee: doctor.fee,
         reason: base.reason, patient_name: form.name, patient_phone: form.phone,
-        patient_age: form.age, patient_gender: form.gender, family_member_id: selectedFamilyId
+        patient_age: form.age, patient_gender: form.gender, family_member_id: selectedFamilyId,
+        clinic_id: clinicId, clinic_name: selectedClinic.clinicName, clinic_address: selectedClinic.address,
       }).select().single();
       if (error) throw error;
       await ctx.refreshRealAppointments();
@@ -1738,6 +1815,28 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
       setBookingLoading(false);
     }
   };
+
+  if (step===0){
+    return (
+      <div className="mq-fade-in" style={{minHeight:"100vh"}}>
+        <TopBar title="Choose Clinic" onBack={onBack} />
+        <div style={{padding:16}}>
+          <div style={{fontSize:12.5,color:COLORS.muted,marginBottom:14}}>Dr. {doctor.name} practices at {clinics.length} locations. Choose where you'd like to visit.</div>
+          {clinics.map(c=>(
+            <button key={c.id} className="mq-btn" onClick={()=>{ setSelectedClinicId(c.id); setStep(1); }} style={{width:"100%",textAlign:"left",background:"#fff",border:`1.5px solid ${COLORS.border}`,borderRadius:14,padding:14,marginBottom:10,display:"flex",gap:12,alignItems:"center"}}>
+              <div style={{width:38,height:38,borderRadius:11,background:COLORS.primarySoft,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Building2 size={17} color={COLORS.primary}/></div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:800,fontSize:13.5}}>{c.clinicName}{c.isPrimary && <span style={{color:COLORS.muted,fontWeight:600}}> (Primary)</span>}</div>
+                <div style={{fontSize:11.5,color:COLORS.muted,marginTop:2}}>{c.address}{c.area?`, ${c.area}`:""}</div>
+                <div style={{fontSize:11,color:COLORS.muted,marginTop:2}}>{c.workingDays.map(d=>DAY_NAMES[d]).join(", ")} · {fmtTime12(c.startTime)}–{fmtTime12(c.endTime)}</div>
+              </div>
+              <ChevronRight size={17} color={COLORS.muted}/>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (step===5 && confirmed){
     return (
@@ -1772,7 +1871,7 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
   const steps = ["Type","Date","Time","Details"];
   return (
     <div className="mq-fade-in" style={{minHeight:"100vh",display:"flex",flexDirection:"column"}}>
-      <TopBar title="Book Appointment" onBack={step===1?onBack:()=>setStep(step-1)} />
+      <TopBar title="Book Appointment" onBack={step===1?(multiClinic?()=>setStep(0):onBack):()=>setStep(step-1)} />
       <div style={{padding:"12px 16px 0",display:"flex",gap:6}}>
         {steps.map((s,i)=>(
           <div key={s} style={{flex:1,height:4,borderRadius:4,background: i+1<=step?COLORS.primary:COLORS.border}} />
@@ -1781,7 +1880,7 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack }){
       <div style={{flex:1,padding:16}}>
         <Card style={{display:"flex",gap:10,marginBottom:18,alignItems:"center"}}>
           <Avatar src={doctor.photo} name={doctor.name} size={44} />
-          <div><div style={{fontWeight:800,fontSize:13.5}}>{doctor.name}</div><div style={{fontSize:11.5,color:COLORS.muted}}>{doctor.specialization} · {doctor.clinicName}</div></div>
+          <div><div style={{fontWeight:800,fontSize:13.5}}>{doctor.name}</div><div style={{fontSize:11.5,color:COLORS.muted}}>{doctor.specialization} · {selectedClinic?.clinicName}</div></div>
         </Card>
 
         {step===1 && (
@@ -2016,6 +2115,9 @@ function AppointmentDetail({ ctx, appt, patient, onBack }){
             <Row icon={Calendar} label={t("date",ctx.language)} value={fmtDateLabel(appt.date)} />
             <Row icon={Clock} label={t("time",ctx.language)} value={fmtTime12(appt.time)} />
             <Row icon={appt.type==="Video Consult"?Video:Building2} label={t("type",ctx.language)} value={appt.type==="Video Consult"?t("videoConsult",ctx.language):t("inClinic",ctx.language)} />
+            {doc && getAllClinics(doc).length>1 && (
+              <Row icon={MapPin} label="Clinic" value={appt.clinicName || doc.clinicName} />
+            )}
             <Row icon={IndianRupee} label={t("consultationFee",ctx.language)} value={`₹${appt.fee}`} />
             <Row icon={FileText} label={t("reason",ctx.language)} value={appt.reason} />
             <Row icon={User} label={t("patient",ctx.language)} value={`${appt.patientName}, ${appt.patientAge}y`} />
@@ -2061,8 +2163,9 @@ function RescheduleModal({ open, onClose, ctx, appt, doctor, patient }){
   const [time, setTime] = useState(null);
   useEffect(()=>{ if(open){ setDate(appt.date); setTime(null); } }, [open, appt]);
   if (!open || !doctor) return null;
-  const dates = next14Days().filter(d => doctor.workingDays.includes(dayOfWeek(d)) && !doctor.blockedDates?.includes(d));
-  const slots = getSlotsForDate(doctor, date, ctx.appointments.filter(a=>a.id!==appt.id));
+  const clinic = getClinicForAppointment(doctor, appt);
+  const dates = next14Days().filter(d => clinic.workingDays.includes(dayOfWeek(d)) && !clinic.blockedDates?.includes(d));
+  const slots = getSlotsForDate(clinic, date, ctx.appointments.filter(a=>a.id!==appt.id), doctor.id);
   const submit = () => {
     if (!time) { ctx.showToast(t("selectNewTimeSlot",ctx.language),"danger"); return; }
     ctx.syncAppt(appt.id, {date, time, status:"pending", rescheduled:true});
@@ -2702,8 +2805,9 @@ function DoctorRescheduleModal({ open, onClose, ctx, appt, doctor }){
   const [time, setTime] = useState(null);
   useEffect(()=>{ if(open && appt){ setDate(appt.date); setTime(null); } }, [open, appt]);
   if (!open || !appt) return null;
-  const dates = next14Days().filter(d => doctor.workingDays.includes(dayOfWeek(d)) && !doctor.blockedDates?.includes(d));
-  const slots = getSlotsForDate(doctor, date, ctx.appointments.filter(a=>a.id!==appt.id));
+  const clinic = getClinicForAppointment(doctor, appt);
+  const dates = next14Days().filter(d => clinic.workingDays.includes(dayOfWeek(d)) && !clinic.blockedDates?.includes(d));
+  const slots = getSlotsForDate(clinic, date, ctx.appointments.filter(a=>a.id!==appt.id), doctor.id);
   const submit = () => {
     if (!time){ ctx.showToast("Select a slot","danger"); return; }
     ctx.syncAppt(appt.id, {date, time, rescheduled:true});
@@ -2849,6 +2953,45 @@ function DoctorProfileSettings({ ctx, doctor }){
   useEffect(()=>setForm(doctor), [doctor.id]);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const [newBlockDate, setNewBlockDate] = useState("");
+  const [editingClinic, setEditingClinic] = useState(null); // null=closed, {}=new, {...row}=editing
+  const [clinicSaving, setClinicSaving] = useState(false);
+
+  const saveClinic = async () => {
+    if (!editingClinic.clinicName?.trim() || !editingClinic.address?.trim()) {
+      ctx.showToast("Clinic name and address are required","danger"); return;
+    }
+    setClinicSaving(true);
+    try {
+      const payload = {
+        doctor_id: doctor.id, clinic_name: editingClinic.clinicName, address: editingClinic.address,
+        area: editingClinic.area || "", lat: editingClinic.clinicLat || null, lng: editingClinic.clinicLng || null,
+        start_time: editingClinic.startTime || "09:00", end_time: editingClinic.endTime || "17:00",
+        break_start: editingClinic.breakStart || "13:00", break_end: editingClinic.breakEnd || "13:45",
+        slot_duration: editingClinic.slotDuration || 20, working_days: editingClinic.workingDays || [1,2,3,4,5,6],
+      };
+      if (editingClinic.id && editingClinic.id !== "primary") {
+        await supabase.from("doctor_clinics").update(payload).eq("id", editingClinic.id);
+      } else {
+        await supabase.from("doctor_clinics").insert(payload);
+      }
+      await ctx.refreshRealDoctors();
+      ctx.showToast("Clinic saved");
+      setEditingClinic(null);
+    } catch (e) {
+      ctx.showToast("Could not save clinic. Please try again.","danger");
+    } finally {
+      setClinicSaving(false);
+    }
+  };
+  const deleteClinic = async (id) => {
+    try {
+      await supabase.from("doctor_clinics").delete().eq("id", id);
+      await ctx.refreshRealDoctors();
+      ctx.showToast("Clinic removed");
+    } catch (e) {
+      ctx.showToast("Could not remove clinic","danger");
+    }
+  };
 
   const save = async () => {
     ctx.updateDoctors(prev => prev.map(d=>d.id===doctor.id?{...d,...form}:d));
@@ -2889,6 +3032,7 @@ function DoctorProfileSettings({ ctx, doctor }){
       <div style={{padding:"14px 16px 0",display:"flex",gap:8}}>
         <TabBtn active={tab==="profile"} onClick={()=>setTab("profile")} label="Profile" />
         <TabBtn active={tab==="hours"} onClick={()=>setTab("hours")} label="Hours & Fee" />
+        <TabBtn active={tab==="clinics"} onClick={()=>setTab("clinics")} label="Clinics" />
         <TabBtn active={tab==="dates"} onClick={()=>setTab("dates")} label="Blocked Dates" />
       </div>
       <div style={{padding:16}}>
@@ -2990,6 +3134,34 @@ function DoctorProfileSettings({ ctx, doctor }){
           </div>
         )}
 
+        {tab==="clinics" && (
+          <div>
+            <div style={{fontSize:12.5,color:COLORS.muted,marginBottom:14,lineHeight:1.5}}>
+              Practice at more than one location? Your "Profile" and "Hours & Fee" tabs always cover
+              your primary clinic. Add any extra clinics here — patients can then choose which one to
+              book at.
+            </div>
+            {(doctor.extraClinics||[]).map(c=>(
+              <Card key={c.id} style={{marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:13.5}}>{c.clinicName}</div>
+                    <div style={{fontSize:12,color:COLORS.muted,marginTop:2}}>{c.address}{c.area?`, ${c.area}`:""}</div>
+                    <div style={{fontSize:11.5,color:COLORS.muted,marginTop:2}}>{c.workingDays.map(d=>DAY_NAMES[d]).join(", ")} · {fmtTime12(c.startTime)}–{fmtTime12(c.endTime)}</div>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    <button className="mq-btn" onClick={()=>setEditingClinic({...c})} style={{background:"#F1F5F9",borderRadius:10,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}><Pencil size={14}/></button>
+                    <button className="mq-btn" onClick={()=>deleteClinic(c.id)} style={{background:COLORS.dangerSoft,borderRadius:10,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",color:COLORS.danger}}><Trash2 size={14}/></button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+            <Btn full variant="outline" icon={Plus} onClick={()=>setEditingClinic({ clinicName:"", address:"", area:AREAS[0], startTime:"09:00", endTime:"17:00", breakStart:"13:00", breakEnd:"13:45", slotDuration:20, workingDays:[1,2,3,4,5,6] })}>
+              Add Another Clinic
+            </Btn>
+          </div>
+        )}
+
         {tab==="dates" && (
           <div>
             <Field label="Block a date" hint="Patients won't be able to book on blocked dates">
@@ -3011,6 +3183,52 @@ function DoctorProfileSettings({ ctx, doctor }){
           </div>
         )}
       </div>
+      <Modal open={!!editingClinic} onClose={()=>setEditingClinic(null)} title={editingClinic?.id ? "Edit Clinic" : "Add Clinic"}>
+        {editingClinic && (
+          <div>
+            <Field label="Clinic name"><TextInput value={editingClinic.clinicName} onChange={e=>setEditingClinic(c=>({...c,clinicName:e.target.value}))} /></Field>
+            <Field label="Address"><TextInput value={editingClinic.address} onChange={e=>setEditingClinic(c=>({...c,address:e.target.value}))} /></Field>
+            <Field label="Area">
+              <Select value={editingClinic.area} onChange={e=>setEditingClinic(c=>({...c,area:e.target.value}))}>{AREAS.map(a=><option key={a}>{a}</option>)}</Select>
+            </Field>
+            <Field label="Exact clinic location" hint="Stand at this clinic and tap this so patients get an accurate map">
+              <Btn variant="outline" icon={MapPin} onClick={()=>{
+                if (!navigator.geolocation) { ctx.showToast("Location not supported on this device","danger"); return; }
+                navigator.geolocation.getCurrentPosition(
+                  (pos)=>setEditingClinic(c=>({...c,clinicLat:pos.coords.latitude,clinicLng:pos.coords.longitude})),
+                  ()=>ctx.showToast("Could not get your location — check location permission","danger")
+                );
+              }}>
+                {editingClinic.clinicLat ? "Update Clinic Location" : "Set This Clinic's Location"}
+              </Btn>
+              {editingClinic.clinicLat && <div style={{fontSize:11.5,color:COLORS.muted,marginTop:6}}>Location saved ✓</div>}
+            </Field>
+            <Field label="Working days">
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {DAY_NAMES.map((d,i)=>(
+                  <button key={d} className="mq-btn" onClick={()=>setEditingClinic(c=>({...c,workingDays:c.workingDays.includes(i)?c.workingDays.filter(x=>x!==i):[...c.workingDays,i].sort()}))} style={{width:42,height:42,borderRadius:10,background:editingClinic.workingDays.includes(i)?COLORS.primary:"#F1F5F9",color:editingClinic.workingDays.includes(i)?"#fff":COLORS.text,fontWeight:700,fontSize:12}}>{d}</button>
+                ))}
+              </div>
+            </Field>
+            <div style={{display:"flex",gap:10}}>
+              <Field label="Start time" style={{flex:1}}><TextInput type="time" value={editingClinic.startTime} onChange={e=>setEditingClinic(c=>({...c,startTime:e.target.value}))} /></Field>
+              <Field label="End time" style={{flex:1}}><TextInput type="time" value={editingClinic.endTime} onChange={e=>setEditingClinic(c=>({...c,endTime:e.target.value}))} /></Field>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <Field label="Break start" style={{flex:1}}><TextInput type="time" value={editingClinic.breakStart} onChange={e=>setEditingClinic(c=>({...c,breakStart:e.target.value}))} /></Field>
+              <Field label="Break end" style={{flex:1}}><TextInput type="time" value={editingClinic.breakEnd} onChange={e=>setEditingClinic(c=>({...c,breakEnd:e.target.value}))} /></Field>
+            </div>
+            <Field label={`Appointment duration: ${editingClinic.slotDuration} min`}>
+              <div style={{display:"flex",gap:8}}>
+                {[10,15,20,30].map(m=>(
+                  <button key={m} className="mq-btn" onClick={()=>setEditingClinic(c=>({...c,slotDuration:m}))} style={{flex:1,background:editingClinic.slotDuration===m?COLORS.primary:"#F1F5F9",color:editingClinic.slotDuration===m?"#fff":COLORS.text,borderRadius:10,padding:"9px 4px",fontWeight:700,fontSize:12.5}}>{m}m</button>
+                ))}
+              </div>
+            </Field>
+            <Btn full size="lg" onClick={saveClinic} disabled={clinicSaving}>{clinicSaving?"Saving...":"Save Clinic"}</Btn>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
