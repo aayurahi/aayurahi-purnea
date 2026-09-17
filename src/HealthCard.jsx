@@ -1,6 +1,4 @@
 import React, { useEffect, useRef, useState } from "react";
-import QRCode from "qrcode";
-import jsQR from "jsqr";
 import { ArrowLeft, ScanLine, X, Loader2, UserCheck } from "lucide-react";
 import { COLORS, AayuRahiLogoMark } from "./App";
 import { supabase } from "./supabaseClient";
@@ -14,6 +12,9 @@ import { supabase } from "./supabaseClient";
      not one specific appointment.
    - QRScannerModal: opens the device camera and decodes a QR code using
      jsQR, entirely client-side — no external service involved.
+   The qrcode/jsqr libraries are loaded on demand (dynamic import), not
+   bundled into the app's main JS file — most page views never open the
+   health card or scanner, so this keeps the initial load lighter.
 ============================================================================ */
 
 export const AAYURAHI_QR_PREFIX = "AAYURAHI_PATIENT:";
@@ -47,7 +48,9 @@ export function PatientHealthCard({ patient, onBack }){
 
   useEffect(()=>{
     if (canvasRef.current && activePerson){
-      QRCode.toCanvas(canvasRef.current, buildHealthCardValue(patient.id, forId), { width: 200, margin: 1, color: { dark: COLORS.text, light: "#ffffff" } });
+      import("qrcode").then(({ default: QRCode }) => {
+        if (canvasRef.current) QRCode.toCanvas(canvasRef.current, buildHealthCardValue(patient.id, forId), { width: 200, margin: 1, color: { dark: COLORS.text, light: "#ffffff" } });
+      });
     }
   }, [patient.id, forId, activePerson]);
 
@@ -103,8 +106,11 @@ export function QRScannerModal({ onDetect, onClose }){
 
   useEffect(()=>{
     let cancelled = false;
+    let decodeQR = null;
     (async () => {
       try {
+        const mod = await import("jsqr");
+        decodeQR = mod.default;
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
         if (cancelled) { stream.getTracks().forEach(t=>t.stop()); return; }
         streamRef.current = stream;
@@ -121,7 +127,7 @@ export function QRScannerModal({ onDetect, onClose }){
     })();
 
     function tick(){
-      if (doneRef.current) return;
+      if (doneRef.current || !decodeQR) return;
       const video = videoRef.current;
       if (video && video.readyState === video.HAVE_ENOUGH_DATA){
         const canvas = canvasRef.current;
@@ -129,7 +135,7 @@ export function QRScannerModal({ onDetect, onClose }){
         const ctx2d = canvas.getContext("2d");
         ctx2d.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageData = ctx2d.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        const code = decodeQR(imageData.data, imageData.width, imageData.height);
         if (code && code.data) {
           doneRef.current = true;
           onDetect(code.data);

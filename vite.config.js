@@ -36,4 +36,20 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Split rarely-changing vendor libraries into their own cacheable
+        // chunks, separate from app code — so a future code change only
+        // invalidates the small app chunk, not these larger libraries the
+        // browser has already cached from a previous visit.
+        manualChunks: {
+          firebase: ["firebase/app", "firebase/messaging"],
+          sentry: ["@sentry/react"],
+          supabase: ["@supabase/supabase-js"],
+          vendor: ["react", "react-dom"],
+        },
+      },
+    },
+  },
 });
