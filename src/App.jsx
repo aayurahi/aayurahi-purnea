@@ -3823,21 +3823,23 @@ function PatientMessages({ ctx, patient, onOpenChat }){
   };
   useEffect(()=>{ load(); }, []);
 
-  // Doctors this patient has had a completed appointment with, within the last 10 days
+  // Doctors this patient has had a completed appointment with, within the last 10 days.
+  // Keyed by the specific appointment (not just doctor) so a NEW completed
+  // appointment with the same doctor re-opens the chat option, even if an
+  // old chat with that doctor already expired long ago.
   const now = Date.now();
-  const eligibleDoctorIds = [...new Set(
-    ctx.appointments
-      .filter(a => a.patientId===patient.id && a.status==="completed" && !a.isDemo)
-      .filter(a => (now - new Date(a.date).getTime()) <= 10*86400000)
-      .map(a => a.doctorId)
-  )];
-  const chattedDoctorIds = new Set((chats||[]).map(c=>c.doctor_id));
-  const canRequest = eligibleDoctorIds.filter(id => !chattedDoctorIds.has(id));
+  const eligibleAppts = ctx.appointments
+    .filter(a => a.patientId===patient.id && a.status==="completed" && !a.isDemo)
+    .filter(a => (now - new Date(a.date).getTime()) <= 10*86400000)
+    .sort((a,b) => new Date(b.date) - new Date(a.date));
+  const latestApptByDoctor = {};
+  eligibleAppts.forEach(a => { if (!latestApptByDoctor[a.doctorId]) latestApptByDoctor[a.doctorId] = a; });
+  const chattedApptIds = new Set((chats||[]).map(c=>c.appointment_id));
+  const canRequest = Object.values(latestApptByDoctor).filter(a => !chattedApptIds.has(a.id));
 
-  const requestChat = async (doctorId) => {
-    const appt = ctx.appointments.find(a=>a.patientId===patient.id && a.doctorId===doctorId && a.status==="completed");
+  const requestChat = async (appt) => {
     const expiresAt = new Date(new Date(appt.date).getTime() + 10*86400000).toISOString();
-    const { error } = await supabase.from("chats").insert({ patient_id: patient.id, doctor_id: doctorId, appointment_id: appt.id, status:"pending", expires_at: expiresAt });
+    const { error } = await supabase.from("chats").insert({ patient_id: patient.id, doctor_id: appt.doctorId, appointment_id: appt.id, status:"pending", expires_at: expiresAt });
     if (error) { ctx.showToast("Could not send chat request","danger"); return; }
     ctx.showToast("Chat request sent");
     load();
@@ -3852,17 +3854,17 @@ function PatientMessages({ ctx, patient, onOpenChat }){
         <div style={{padding:"0 16px 8px"}}>
           <div style={{fontWeight:700,fontSize:12.5,color:COLORS.muted,marginBottom:8}}>{t("startAChatSection",ctx.language)}</div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {canRequest.map(id=>{
-              const doc = ctx.doctors.find(d=>d.id===id);
+            {canRequest.map(appt=>{
+              const doc = ctx.doctors.find(d=>d.id===appt.doctorId);
               if (!doc) return null;
               return (
-                <Card key={id} style={{display:"flex",gap:10,alignItems:"center"}}>
+                <Card key={appt.id} style={{display:"flex",gap:10,alignItems:"center"}}>
                   <Avatar src={doc.photo} name={doc.name} size={40} />
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:700,fontSize:13.5}}>{doc.name}</div>
                     <div style={{fontSize:11.5,color:COLORS.muted}}>{translateSpecialty(doc.specialization,ctx.language)}</div>
                   </div>
-                  <Btn size="sm" onClick={()=>requestChat(id)}>{t("requestChat",ctx.language)}</Btn>
+                  <Btn size="sm" onClick={()=>requestChat(appt)}>{t("requestChat",ctx.language)}</Btn>
                 </Card>
               );
             })}
