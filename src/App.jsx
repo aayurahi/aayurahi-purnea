@@ -4,7 +4,7 @@ import Auth from "./Auth";
 import LegalPage from "./Legal";
 import EmergencyInfoPage from "./EmergencyInfo";
 import SymptomGuideModal from "./SymptomGuide";
-import { PatientHealthCard, QRScannerModal, AAYURAHI_QR_PREFIX } from "./HealthCard";
+import { PatientHealthCard, QRScannerModal, parseHealthCardValue } from "./HealthCard";
 import { requestNotificationPermission, listenForForegroundMessages } from "./firebaseMessaging";
 import {
   Search, MapPin, Star, Clock, Calendar, User, Bell, Home as HomeIcon, Users,
@@ -111,6 +111,15 @@ function next14Days(){
   }
   return out;
 }
+// Age in years from a date-of-birth string, or "" if none is set yet.
+export function calcAge(dob){
+  if (!dob) return "";
+  const d = new Date(dob);
+  if (isNaN(d.getTime())) return "";
+  const diffMs = Date.now() - d.getTime();
+  return Math.max(0, Math.floor(diffMs / (365.25*24*3600*1000)));
+}
+
 function dayOfWeek(dateStr){
   return new Date(dateStr+"T00:00:00").getDay(); // 0 Sun ... 6 Sat
 }
@@ -406,6 +415,7 @@ function mapRealAppointmentRow(row){
     patientName: row.patient_name || "", patientPhone: row.patient_phone || "",
     patientAge: row.patient_age || "", patientGender: row.patient_gender || "",
     clinicId: row.clinic_id || null, clinicName: row.clinic_name || "", clinicAddress: row.clinic_address || "",
+    familyMemberId: row.family_member_id || null,
     createdAt: row.created_at || new Date().toISOString(), rescheduled: !!row.rescheduled,
     isDemo: false,
   };
@@ -1781,7 +1791,7 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack, initialClinicId }){
   const [type, setType] = useState(doctor?.consultTypes?.[0] || "In-Clinic");
   const [date, setDate] = useState(null);
   const [time, setTime] = useState(null);
-  const [form, setForm] = useState({ name: patient.name, phone: patient.phone, age:"", gender: patient.gender||"", reason:"" });
+  const [form, setForm] = useState({ name: patient.name, phone: patient.phone, age: calcAge(patient.dob), gender: patient.gender||"", reason:"" });
   const [confirmed, setConfirmed] = useState(null);
   const [familyMembers, setFamilyMembers] = useState([]);
   const [selectedFamilyId, setSelectedFamilyId] = useState(null); // null = booking for myself
@@ -1797,7 +1807,7 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack, initialClinicId }){
   const chooseWhoFor = (member) => {
     setSelectedFamilyId(member ? member.id : null);
     if (member) setForm(f => ({ ...f, name: member.name, age: member.age||"", gender: member.gender||"" }));
-    else setForm(f => ({ ...f, name: patient.name, age:"", gender: patient.gender||"" }));
+    else setForm(f => ({ ...f, name: patient.name, age: calcAge(patient.dob), gender: patient.gender||"" }));
   };
 
   if (!doctor) return <LoadingState />;
@@ -1820,6 +1830,7 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack, initialClinicId }){
       status:"pending", tokenNumber, fee: doctor.fee, reason: form.reason || "General consultation",
       patientName: form.name, patientPhone: form.phone, patientAge: form.age, patientGender: form.gender,
       clinicId, clinicName: selectedClinic.clinicName, clinicAddress: selectedClinic.address,
+      familyMemberId: selectedFamilyId,
       createdAt: new Date().toISOString(), rescheduled:false
     };
     if (doctor.isDemo) {
@@ -2902,16 +2913,18 @@ function DoctorQueue({ ctx, doctor }){
 
   const handleScan = (decoded) => {
     setShowScanner(false);
-    if (!decoded.startsWith(AAYURAHI_QR_PREFIX)) {
+    const parsed = parseHealthCardValue(decoded);
+    if (!parsed) {
       ctx.showToast("That doesn't look like an AayuRahi health card","danger");
       return;
     }
-    const patientId = decoded.slice(AAYURAHI_QR_PREFIX.length);
+    const { patientId, forId } = parsed;
     const todaysForPatient = ctx.appointments
-      .filter(a=>a.doctorId===doctor.id && a.patientId===patientId && a.date===todayStr && ["pending","confirmed","arrived"].includes(a.status))
+      .filter(a=>a.doctorId===doctor.id && a.patientId===patientId && a.date===todayStr && ["pending","confirmed","arrived"].includes(a.status)
+        && (forId==="self" ? !a.familyMemberId : a.familyMemberId===forId))
       .sort((a,b)=>a.time.localeCompare(b.time));
     if (todaysForPatient.length===0) {
-      ctx.showToast("No appointment found for this patient today","danger");
+      ctx.showToast("No appointment found for this person today","danger");
       return;
     }
     const target = todaysForPatient[0];

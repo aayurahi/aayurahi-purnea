@@ -3,25 +3,53 @@ import QRCode from "qrcode";
 import jsQR from "jsqr";
 import { ArrowLeft, ScanLine, X, Loader2, UserCheck } from "lucide-react";
 import { COLORS, AayuRahiLogoMark } from "./App";
+import { supabase } from "./supabaseClient";
 
 /* ============================================================================
    DIGITAL HEALTH CARD & QR CHECK-IN
-   - PatientHealthCard: a patient's own QR (encodes just their ID, so it works
-     for any doctor/clinic, not one specific appointment) plus basic details,
-     shown in Profile & Settings and from a today's-appointment detail screen.
+   - PatientHealthCard: a patient's own QR (encodes their ID PLUS who the
+     card is currently showing — the account holder themself, or a specific
+     family member — so a family member visiting alone still checks in
+     correctly, and the doctor sees the right name). Works for any doctor,
+     not one specific appointment.
    - QRScannerModal: opens the device camera and decodes a QR code using
      jsQR, entirely client-side — no external service involved.
 ============================================================================ */
 
 export const AAYURAHI_QR_PREFIX = "AAYURAHI_PATIENT:";
+// A card's QR encodes: AAYURAHI_PATIENT:<patientId>:<"self" or family_member_id>
+export function buildHealthCardValue(patientId, forId){
+  return `${AAYURAHI_QR_PREFIX}${patientId}:${forId || "self"}`;
+}
+// Parses a scanned value back into { patientId, forId } — forId is "self" or
+// a family member's id. Returns null if it isn't an AayuRahi health card.
+export function parseHealthCardValue(decoded){
+  if (!decoded || !decoded.startsWith(AAYURAHI_QR_PREFIX)) return null;
+  const rest = decoded.slice(AAYURAHI_QR_PREFIX.length);
+  const [patientId, forId] = rest.split(":");
+  if (!patientId) return null;
+  return { patientId, forId: forId || "self" };
+}
 
 export function PatientHealthCard({ patient, onBack }){
   const canvasRef = useRef(null);
+  const [familyMembers, setFamilyMembers] = useState([]);
+  const [forId, setForId] = useState("self"); // "self" or a family member's id
+
   useEffect(()=>{
-    if (canvasRef.current){
-      QRCode.toCanvas(canvasRef.current, `${AAYURAHI_QR_PREFIX}${patient.id}`, { width: 200, margin: 1, color: { dark: COLORS.text, light: "#ffffff" } });
-    }
+    (async () => {
+      const { data } = await supabase.from("family_members").select("*").eq("patient_id", patient.id).order("created_at");
+      setFamilyMembers(data || []);
+    })();
   }, [patient.id]);
+
+  const activePerson = forId === "self" ? patient : familyMembers.find(m=>m.id===forId);
+
+  useEffect(()=>{
+    if (canvasRef.current && activePerson){
+      QRCode.toCanvas(canvasRef.current, buildHealthCardValue(patient.id, forId), { width: 200, margin: 1, color: { dark: COLORS.text, light: "#ffffff" } });
+    }
+  }, [patient.id, forId, activePerson]);
 
   return (
     <div className="mq-fade-in" style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 520, height: "100vh", background: COLORS.bg, zIndex: 1500, overflowY: "auto" }}>
@@ -32,7 +60,15 @@ export function PatientHealthCard({ patient, onBack }){
         <AayuRahiLogoMark size={26} />
         <div style={{ fontWeight: 800, fontSize: 16 }}>My Health Card</div>
       </div>
-      <div style={{ padding: "24px 20px 60px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <div style={{ padding: "20px 20px 60px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        {familyMembers.length > 0 && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginBottom: 18, width: "100%" }}>
+            <button onClick={()=>setForId("self")} style={{ padding: "8px 14px", borderRadius: 20, border: `1.5px solid ${forId==="self"?COLORS.primary:COLORS.border}`, background: forId==="self"?COLORS.primarySoft:"#fff", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Myself</button>
+            {familyMembers.map(m=>(
+              <button key={m.id} onClick={()=>setForId(m.id)} style={{ padding: "8px 14px", borderRadius: 20, border: `1.5px solid ${forId===m.id?COLORS.primary:COLORS.border}`, background: forId===m.id?COLORS.primarySoft:"#fff", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{m.name} · {m.relation}</button>
+            ))}
+          </div>
+        )}
         <div style={{ width: "100%", maxWidth: 340, background: "#fff", borderRadius: 20, border: `1.5px solid ${COLORS.border}`, padding: 22, boxShadow: "0 8px 24px rgba(15,27,45,0.06)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
             <AayuRahiLogoMark size={24} />
@@ -41,13 +77,15 @@ export function PatientHealthCard({ patient, onBack }){
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
             <canvas ref={canvasRef} style={{ borderRadius: 12 }} />
           </div>
-          <div style={{ textAlign: "center", fontWeight: 800, fontSize: 15 }}>{patient.name}</div>
-          {patient.phone && <div style={{ textAlign: "center", fontSize: 12.5, color: COLORS.muted, marginTop: 2 }}>{patient.phone}</div>}
+          <div style={{ textAlign: "center", fontWeight: 800, fontSize: 15 }}>{activePerson?.name}</div>
+          {forId==="self" && patient.phone && <div style={{ textAlign: "center", fontSize: 12.5, color: COLORS.muted, marginTop: 2 }}>{patient.phone}</div>}
+          {forId!=="self" && activePerson?.relation && <div style={{ textAlign: "center", fontSize: 12.5, color: COLORS.muted, marginTop: 2 }}>{activePerson.relation} of {patient.name}</div>}
           <div style={{ textAlign: "center", fontSize: 10.5, color: COLORS.muted, marginTop: 10 }}>ID: {patient.id.slice(0,8).toUpperCase()}</div>
         </div>
         <div style={{ fontSize: 12, color: COLORS.muted, textAlign: "center", marginTop: 20, lineHeight: 1.6, maxWidth: 320 }}>
-          Show this QR code at the clinic's front desk to check in quickly for your appointment —
-          no need to spell out your name or phone number.
+          {familyMembers.length > 0
+            ? "Switch above if a family member is the one visiting the clinic — this makes sure the right person gets checked in. Show this QR code at the clinic's front desk."
+            : "Show this QR code at the clinic's front desk to check in quickly for your appointment — no need to spell out your name or phone number."}
         </div>
       </div>
     </div>
