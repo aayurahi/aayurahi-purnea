@@ -80,7 +80,7 @@ export function PatientHealthCard({ patient, onBack }){
           <div style={{ textAlign: "center", fontWeight: 800, fontSize: 15 }}>{activePerson?.name}</div>
           {forId==="self" && patient.phone && <div style={{ textAlign: "center", fontSize: 12.5, color: COLORS.muted, marginTop: 2 }}>{patient.phone}</div>}
           {forId!=="self" && activePerson?.relation && <div style={{ textAlign: "center", fontSize: 12.5, color: COLORS.muted, marginTop: 2 }}>{activePerson.relation} of {patient.name}</div>}
-          <div style={{ textAlign: "center", fontSize: 10.5, color: COLORS.muted, marginTop: 10 }}>ID: {patient.id.slice(0,8).toUpperCase()}</div>
+          <div style={{ textAlign: "center", fontSize: 10.5, color: COLORS.muted, marginTop: 10 }}>ID: {activePerson?.id?.slice(0,8).toUpperCase()}</div>
         </div>
         <div style={{ fontSize: 12, color: COLORS.muted, textAlign: "center", marginTop: 20, lineHeight: 1.6, maxWidth: 320 }}>
           {familyMembers.length > 0
