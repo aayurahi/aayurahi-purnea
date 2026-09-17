@@ -2919,15 +2919,18 @@ function DoctorQueue({ ctx, doctor }){
       return;
     }
     const { patientId, forId } = parsed;
-    const todaysForPatient = ctx.appointments
-      .filter(a=>a.doctorId===doctor.id && a.patientId===patientId && a.date===todayStr && ["pending","confirmed","arrived"].includes(a.status)
+    // Matches today's appointment first; falls back to the soonest upcoming
+    // one with this doctor if nothing is booked for today specifically
+    // (handles early check-ins and avoids false "not found" errors).
+    const upcomingForPerson = ctx.appointments
+      .filter(a=>a.doctorId===doctor.id && a.patientId===patientId && a.date>=todayStr && ["pending","confirmed","arrived"].includes(a.status)
         && (forId==="self" ? !a.familyMemberId : a.familyMemberId===forId))
-      .sort((a,b)=>a.time.localeCompare(b.time));
-    if (todaysForPatient.length===0) {
-      ctx.showToast("No appointment found for this person today","danger");
+      .sort((a,b)=> a.date===b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date));
+    if (upcomingForPerson.length===0) {
+      ctx.showToast("No appointment found for this person with you","danger");
       return;
     }
-    const target = todaysForPatient[0];
+    const target = upcomingForPerson[0];
     if (target.status==="pending") {
       ctx.syncAppt(target.id, {status:"confirmed"});
       ctx.showToast(`Checked in: ${target.patientName} — Token #${target.tokenNumber}`);
