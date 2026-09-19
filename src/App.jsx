@@ -348,6 +348,22 @@ function mapRealDoctorRow(row){
   };
 }
 
+// Turns a real Supabase 'patients' row (joined with its profile) into the
+// same shape the rest of the app already expects. Name and photo come from
+// profiles (same source of truth doctors use) — everything else (phone,
+// email, dob, gender, favorites) comes from the patients table itself.
+function mapRealPatientRow(row){
+  return {
+    id: row.id,
+    name: row.profiles?.full_name || "Patient",
+    photo: row.profiles?.avatar_url || "",
+    phone: row.phone || "", email: row.email || "", dob: row.dob || "", gender: row.gender || "",
+    favorites: row.favorites || [],
+    createdAt: row.created_at || new Date().toISOString(),
+    isDemo: false,
+  };
+}
+
 // Turns a real Supabase 'doctor_clinics' row (an additional clinic location,
 // beyond the doctor's primary one on the `doctors` table) into the same
 // clinic shape used everywhere else — see getAllClinics() below.
@@ -477,7 +493,7 @@ function generateSamplePatients(n){
       id: uid("pat"), name, phone: `9${rnd(100000000,999999999)}`,
       email: `${name.split(" ")[0].toLowerCase()}${rnd(10,99)}@mail.com`,
       dob: `${rnd(1965,2018)}-${pad2(rnd(1,12))}-${pad2(rnd(1,28))}`,
-      gender: pick(["Male","Female"]), favorites: [], createdAt: new Date().toISOString()
+      gender: pick(["Male","Female"]), favorites: [], createdAt: new Date().toISOString(), isDemo: true
     });
   }
   return pats;
@@ -844,6 +860,7 @@ export default function App(){
         await loadRealSession(supaSession.user.id);
       }
       await refreshRealDoctors();
+      await refreshRealPatients();
       await refreshRealAppointments();
       await refreshRealReviews();
       setBooted(true);
@@ -852,6 +869,7 @@ export default function App(){
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, supaSession) => {
       if (!supaSession) setSession(null);
       refreshRealDoctors();
+      refreshRealPatients();
       refreshRealAppointments();
       refreshRealReviews();
     });
@@ -869,6 +887,16 @@ export default function App(){
     (clinicRows || []).forEach(c => { (clinicsByDoctor[c.doctor_id] ||= []).push(mapRealClinicRow(c)); });
     const realMapped = (rows || []).map(row => ({ ...mapRealDoctorRow(row), extraClinics: clinicsByDoctor[row.profile_id] || [] }));
     setDoctors(prev => [...prev.filter(d => d.isDemo), ...realMapped]);
+  };
+
+  // Fetches real patients from Supabase — RLS scopes this automatically:
+  // a patient sees only their own row, a doctor sees only patients who've
+  // actually booked with them, and an admin sees everyone. Demo/preview
+  // patients (used to fill out the admin demo experience) are kept separate.
+  const refreshRealPatients = async () => {
+    const { data: rows } = await supabase.from("patients").select("*, profiles(full_name, avatar_url)");
+    const realMapped = (rows || []).map(mapRealPatientRow);
+    setPatients(prev => [...prev.filter(p => p.isDemo), ...realMapped]);
   };
 
   // Fetches real appointments from Supabase — RLS scopes this automatically:
@@ -917,7 +945,9 @@ export default function App(){
   }, []);
 
   const updateDoctors = (updater) => persist(K.doctors, setDoctors, updater);
-  const updatePatients = (updater) => persist(K.patients, setPatients, updater);
+  // Local-only state update (no blob persistence — real patient data now
+  // lives in the patients table; each write site below saves explicitly).
+  const updatePatients = (updater) => setPatients(updater);
   const updateAppointments = (updater) => persist(K.appointments, setAppointments, updater);
   const updateReviews = (updater) => persist(K.reviews, setReviews, updater);
   const updateNotifications = (updater) => persist(K.notifications, setNotifications, updater);
@@ -944,7 +974,8 @@ export default function App(){
       if (eUp) throw eUp;
       const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
       const url = `${pub.publicUrl}?t=${Date.now()}`; // cache-bust so the new photo shows immediately
-      await supabase.from("profiles").update({ avatar_url: url }).eq("id", session.id);
+      const { error: eProfile } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", session.id);
+      if (eProfile) throw eProfile;
       if (session.role === "patient") {
         updatePatients(prev => prev.map(p => p.id === session.id ? { ...p, photo: url } : p));
       } else if (session.role === "doctor") {
@@ -1039,7 +1070,7 @@ export default function App(){
   const ctx = {
     doctors, patients, appointments, reviews, notifications, specialties,
     updateDoctors, updatePatients, updateAppointments, updateReviews, updateNotifications, updateSpecialties,
-    showToast, session, login, logout, refreshRealDoctors, uploadAvatar, syncAppt, refreshRealAppointments,
+    showToast, session, login, logout, refreshRealDoctors, refreshRealPatients, uploadAvatar, syncAppt, refreshRealAppointments,
     unreadChats, refreshUnreadChats, refreshRealReviews, language, setLanguage,
     deepLink, clearDeepLink, openLegal: setLegalOverlay, openEmergency: ()=>setEmergencyOverlay(true)
   };
@@ -1317,8 +1348,10 @@ function PatientApp({ ctx }){
       ctx.updatePatients(prev => [...prev, {
         id: ctx.session.id, name: ctx.session.full_name || "Patient",
         photo: ctx.session.avatar_url || "",
-        phone: "", email: "", dob: "", gender: "", favorites: [], createdAt: new Date().toISOString()
+        phone: "", email: "", dob: "", gender: "", favorites: [], createdAt: new Date().toISOString(), isDemo:false
       }]);
+      supabase.from("patients").upsert({ id: ctx.session.id, phone:"", email:"", dob:"", gender:"", favorites:[] })
+        .then(({error}) => { if (error) ctx.showToast("Could not set up your patient profile — please reopen the app","danger"); });
     }
   }, []);
   const [tab, setTab] = useState("home");
@@ -1618,8 +1651,13 @@ function DoctorProfileView({ ctx, doctor, patient, onBack, onBook }){
   const docReviews = ctx.reviews.filter(r=>r.doctorId===doctor.id).slice().reverse();
   const isFav = patient.favorites?.includes(doctor.id);
   const toggleFav = () => {
-    ctx.updatePatients(prev => prev.map(p => p.id===patient.id ? { ...p, favorites: isFav ? p.favorites.filter(id=>id!==doctor.id) : [...(p.favorites||[]), doctor.id] } : p));
+    const newFavorites = isFav ? patient.favorites.filter(id=>id!==doctor.id) : [...(patient.favorites||[]), doctor.id];
+    ctx.updatePatients(prev => prev.map(p => p.id===patient.id ? { ...p, favorites: newFavorites } : p));
     ctx.showToast(isFav?"Removed from favourites":"Added to favourites");
+    if (!patient.isDemo) {
+      supabase.from("patients").update({ favorites: newFavorites }).eq("id", patient.id)
+        .then(({error}) => { if (error) ctx.showToast("Could not save favourite — please try again","danger"); });
+    }
   };
   const nextInfo = getNextAvailableLabel(doctor, ctx.language);
 
@@ -2517,10 +2555,21 @@ function PatientProfile({ ctx, patient, onOpenDoctor, onOpenFamily }){
   const mine = ctx.appointments.filter(a=>a.patientId===patient.id);
   const completed = mine.filter(a=>a.status==="completed").length;
 
-  const save = () => {
+  const save = async () => {
     ctx.updatePatients(prev => prev.map(p=>p.id===patient.id?{...p,...form}:p));
-    ctx.showToast("Profile updated");
     setEditing(false);
+    if (patient.isDemo) { ctx.showToast("Profile updated"); return; }
+    try {
+      const { error: pErr } = await supabase.from("patients").update({ email: form.email, dob: form.dob, gender: form.gender }).eq("id", patient.id);
+      if (pErr) throw pErr;
+      if (form.name !== patient.name) {
+        const { error: nErr } = await supabase.from("profiles").update({ full_name: form.name }).eq("id", patient.id);
+        if (nErr) throw nErr;
+      }
+      ctx.showToast("Profile updated");
+    } catch (e) {
+      ctx.showToast("Could not save changes — please try again","danger");
+    }
   };
 
   return (
@@ -2608,7 +2657,12 @@ function PatientProfile({ ctx, patient, onOpenDoctor, onOpenFamily }){
         {favDoctors.length===0 ? <EmptyState icon={Heart} title={t("noFavouritesYet",ctx.language)} subtitle={t("favSubtitle",ctx.language)} /> : (
           <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
             {favDoctors.map(d => <DoctorCard key={d.id} doctor={d} onClick={()=>onOpenDoctor(d)} lang={ctx.language} onFav={()=>{
-              ctx.updatePatients(prev => prev.map(p => p.id===patient.id ? {...p, favorites:p.favorites.filter(id=>id!==d.id)} : p));
+              const newFavorites = patient.favorites.filter(id=>id!==d.id);
+              ctx.updatePatients(prev => prev.map(p => p.id===patient.id ? {...p, favorites:newFavorites} : p));
+              if (!patient.isDemo) {
+                supabase.from("patients").update({ favorites: newFavorites }).eq("id", patient.id)
+                  .then(({error}) => { if (error) ctx.showToast("Could not save favourite — please try again","danger"); });
+              }
             }} isFav={true} />)}
           </div>
         )}
@@ -3115,23 +3169,26 @@ function DoctorProfileSettings({ ctx, doctor }){
 
   const save = async () => {
     ctx.updateDoctors(prev => prev.map(d=>d.id===doctor.id?{...d,...form}:d));
-    if (!doctor.isDemo) {
-      try {
-        await supabase.from("doctors").update({
-          specialty: form.specialization, qualification: form.qualification, experience: form.experience,
-          clinic_name: form.clinicName, clinic_address: form.address, area: form.area, about: form.about,
-          fee: form.fee, start_time: form.startTime, end_time: form.endTime,
-          break_start: form.breakStart, break_end: form.breakEnd, slot_duration: form.slotDuration,
-          working_days: form.workingDays, blocked_dates: form.blockedDates, consult_types: form.consultTypes,
-          clinic_lat: form.clinicLat || null, clinic_lng: form.clinicLng || null,
-          whatsapp_number: form.whatsappNumber || null,
-        }).eq("profile_id", doctor.id);
-        if (form.name !== doctor.name) {
-          await supabase.from("profiles").update({ full_name: form.name }).eq("id", doctor.id);
-        }
-      } catch (e) { /* local update already applied; will retry on next save */ }
+    if (doctor.isDemo) { ctx.showToast("Settings saved"); return; }
+    try {
+      const { error: dErr } = await supabase.from("doctors").update({
+        specialty: form.specialization, qualification: form.qualification, experience: form.experience,
+        clinic_name: form.clinicName, clinic_address: form.address, area: form.area, about: form.about,
+        fee: form.fee, start_time: form.startTime, end_time: form.endTime,
+        break_start: form.breakStart, break_end: form.breakEnd, slot_duration: form.slotDuration,
+        working_days: form.workingDays, blocked_dates: form.blockedDates, consult_types: form.consultTypes,
+        clinic_lat: form.clinicLat || null, clinic_lng: form.clinicLng || null,
+        whatsapp_number: form.whatsappNumber || null,
+      }).eq("profile_id", doctor.id);
+      if (dErr) throw dErr;
+      if (form.name !== doctor.name) {
+        const { error: nErr } = await supabase.from("profiles").update({ full_name: form.name }).eq("id", doctor.id);
+        if (nErr) throw nErr;
+      }
+      ctx.showToast("Settings saved");
+    } catch (e) {
+      ctx.showToast("Could not save changes — please try again","danger");
     }
-    ctx.showToast("Settings saved");
   };
   const toggleDay = (d) => {
     setForm(f => ({...f, workingDays: f.workingDays.includes(d) ? f.workingDays.filter(x=>x!==d) : [...f.workingDays,d].sort()}));
@@ -3359,7 +3416,42 @@ function DoctorProfileSettings({ ctx, doctor }){
 function AdminApp({ ctx }){
   const [tab, setTab] = useState("dashboard");
   const [more, setMore] = useState(false);
+  const [migrating, setMigrating] = useState(false);
   const pendingDoctors = ctx.doctors.filter(d=>d.status==="pending").length;
+
+  // One-time migration: copies patient data (phone/dob/gender/favorites,
+  // plus name/photo if not already set) out of the old shared Storage blob
+  // and into the new patients table. Safe to run more than once — it
+  // upserts, and never overwrites a name/photo a patient has already set
+  // through the app since this update.
+  const migratePatientsFromBlob = async () => {
+    setMigrating(true);
+    try {
+      const blob = await storageGet(K.patients, true);
+      const realOnes = (blob || []).filter(p => !p.isDemo);
+      if (!realOnes.length) { ctx.showToast("No old patient data found to migrate"); setMigrating(false); return; }
+      let migrated = 0, failed = 0;
+      for (const p of realOnes) {
+        const { error: pErr } = await supabase.from("patients").upsert({
+          id: p.id, phone: p.phone||"", email: p.email||"", dob: p.dob||"", gender: p.gender||"", favorites: p.favorites||[]
+        });
+        if (pErr) { failed++; continue; }
+        const profileUpdate = {};
+        if (p.name) profileUpdate.full_name = p.name;
+        if (p.photo) profileUpdate.avatar_url = p.photo;
+        if (Object.keys(profileUpdate).length) {
+          await supabase.from("profiles").update(profileUpdate).eq("id", p.id);
+        }
+        migrated++;
+      }
+      await ctx.refreshRealPatients();
+      ctx.showToast(`Migrated ${migrated} patient(s)${failed?`, ${failed} failed`:""}`);
+    } catch (e) {
+      ctx.showToast("Migration failed — please try again","danger");
+    } finally {
+      setMigrating(false);
+    }
+  };
 
   const navItems = [
     { key:"dashboard", label:"Dashboard", icon:LayoutGrid },
@@ -3391,6 +3483,7 @@ function AdminApp({ ctx }){
           <MoreRow icon={ShieldCheck} label="Privacy Policy" onClick={()=>{setMore(false);ctx.openLegal("privacy");}} />
           <MoreRow icon={FileText} label="Terms of Service" onClick={()=>{setMore(false);ctx.openLegal("terms");}} />
           <MoreRow icon={Phone} label="Emergency Numbers & Hospitals" onClick={()=>{setMore(false);ctx.openEmergency();}} />
+          <MoreRow icon={RefreshCw} label={migrating?"Migrating patient data...":"Migrate Patient Data (one-time)"} onClick={()=>{ if(!migrating) migratePatientsFromBlob(); }} />
           <MoreRow icon={LogOut} label="Logout" danger onClick={()=>ctx.logout()} />
         </div>
       </Modal>
