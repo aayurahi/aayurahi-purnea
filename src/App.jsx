@@ -395,6 +395,20 @@ function nearestClinicDistanceKm(doctor, userLat, userLng){
   return Math.min(...withLocation.map(c=>haversineKm(userLat, userLng, c.clinicLat, c.clinicLng)));
 }
 
+// Given a booked appointment, returns the current display name/photo for
+// whoever it's for. If it was booked for the account holder themself, this
+// uses their CURRENT live profile (so a later name/photo change follows
+// them everywhere) rather than the name snapshotted at booking time. If it
+// was booked for a family member, the snapshot IS the correct identity (a
+// different person from the account holder) and is kept as-is.
+function displayPatientFor(a, ctx){
+  if (!a.familyMemberId) {
+    const live = ctx.patients.find(p=>p.id===a.patientId);
+    if (live) return { name: live.name, photo: live.photo || "", phone: live.phone || a.patientPhone };
+  }
+  return { name: a.patientName, photo: "", phone: a.patientPhone };
+}
+
 // Given a booked appointment, returns the specific clinic it was booked at
 // (falls back to the doctor's primary clinic for old appointments booked
 // before multi-clinic support existed, or if that clinic was since removed).
@@ -2086,7 +2100,7 @@ function PatientAppointments({ ctx, patient, onOpen, onBookAgain }){
                         <Badge tone={STATUS_TONE(a.status)}>{translateStatus(a.status,ctx.language)}</Badge>
                       </div>
                       <div style={{fontSize:11.5,color:COLORS.muted}}>{translateSpecialty(doc.specialization,ctx.language)}</div>
-                      {a.patientName && a.patientName!==patient.name && (
+                      {a.familyMemberId && a.patientName && (
                         <div style={{fontSize:11,color:COLORS.primary,fontWeight:700,marginTop:2}}>{ctx.language==="hi"?"के लिए":"For"}: {a.patientName}</div>
                       )}
                       <div style={{display:"flex",gap:12,marginTop:6,fontSize:11.5,color:COLORS.muted}}>
@@ -2179,7 +2193,7 @@ function AppointmentDetail({ ctx, appt, patient, onBack }){
             )}
             <Row icon={IndianRupee} label={t("consultationFee",ctx.language)} value={`₹${appt.fee}`} />
             <Row icon={FileText} label={t("reason",ctx.language)} value={appt.reason} />
-            <Row icon={User} label={t("patient",ctx.language)} value={`${appt.patientName}, ${appt.patientAge}y`} />
+            <Row icon={User} label={t("patient",ctx.language)} value={`${displayPatientFor(appt, ctx).name}, ${appt.patientAge}y`} />
           </div>
         </Card>
 
@@ -2740,7 +2754,7 @@ function DoctorDashboard({ ctx, doctor, goTab }){
                 <div key={a.id} style={{display:"flex",alignItems:"center",gap:10,paddingBottom:8,borderBottom:`1px solid ${COLORS.border}`}}>
                   <div style={{width:30,height:30,borderRadius:8,background: a.tokenNumber===currentToken?COLORS.primary:COLORS.primarySoft,color:a.tokenNumber===currentToken?"#fff":COLORS.primary,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:12,flexShrink:0}}>{a.tokenNumber}</div>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:700,fontSize:12.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.patientName}</div>
+                    <div style={{fontWeight:700,fontSize:12.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{displayPatientFor(a, ctx).name}</div>
                     <div style={{fontSize:11,color:COLORS.muted}}>{fmtTime12(a.time)}</div>
                   </div>
                   <Badge tone={STATUS_TONE(a.status)}>{a.status}</Badge>
@@ -2775,7 +2789,7 @@ function DoctorApptRow({ ctx, appt, compact=false }){
       <div style={{display:"flex",gap:10,alignItems:"center"}}>
         <div style={{width:34,height:34,borderRadius:9,background:COLORS.primarySoft,color:COLORS.primary,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:12.5,flexShrink:0}}>{appt.tokenNumber}</div>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:700,fontSize:13}}>{appt.patientName}</div>
+          <div style={{fontWeight:700,fontSize:13}}>{displayPatientFor(appt, ctx).name}</div>
           <div style={{fontSize:11.5,color:COLORS.muted}}>{fmtDateLabel(appt.date)} · {fmtTime12(appt.time)} · {appt.type}</div>
         </div>
       </div>
@@ -2834,8 +2848,8 @@ function DoctorAppointments({ ctx, doctor }){
                   <div style={{display:"flex",gap:10}}>
                     <div style={{width:34,height:34,borderRadius:9,background:COLORS.primarySoft,color:COLORS.primary,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:12.5,flexShrink:0}}>{a.tokenNumber}</div>
                     <div>
-                      <div style={{fontWeight:700,fontSize:13.5}}>{a.patientName}</div>
-                      <div style={{fontSize:11.5,color:COLORS.muted}}>{a.patientAge}y, {a.patientGender||"—"} · {a.patientPhone}</div>
+                      <div style={{fontWeight:700,fontSize:13.5}}>{displayPatientFor(a, ctx).name}</div>
+                      <div style={{fontSize:11.5,color:COLORS.muted}}>{a.patientAge}y, {a.patientGender||"—"} · {displayPatientFor(a, ctx).phone}</div>
                     </div>
                   </div>
                   <Badge tone={STATUS_TONE(a.status)}>{a.status}</Badge>
@@ -2887,7 +2901,7 @@ function DoctorRescheduleModal({ open, onClose, ctx, appt, doctor }){
     onClose();
   };
   return (
-    <Modal open={open} onClose={onClose} title={`Reschedule — ${appt.patientName}`}>
+    <Modal open={open} onClose={onClose} title={`Reschedule — ${displayPatientFor(appt, ctx).name}`}>
       <Field label="New date">
         <div className="mq-scroll" style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4}}>
           {dates.map(d=>(<button key={d} className="mq-btn" onClick={()=>{setDate(d);setTime(null);}} style={{flexShrink:0,background:date===d?COLORS.primary:"#F1F5F9",color:date===d?"#fff":COLORS.text,borderRadius:10,padding:"8px 12px",fontSize:12,fontWeight:700}}>{fmtDateLabel(d)}</button>))}
@@ -2933,9 +2947,9 @@ function DoctorQueue({ ctx, doctor }){
     const target = upcomingForPerson[0];
     if (target.status==="pending") {
       ctx.syncAppt(target.id, {status:"confirmed"});
-      ctx.showToast(`Checked in: ${target.patientName} — Token #${target.tokenNumber}`);
+      ctx.showToast(`Checked in: ${displayPatientFor(target, ctx).name} — Token #${target.tokenNumber}`);
     } else {
-      ctx.showToast(`${target.patientName} already checked in — Token #${target.tokenNumber}`,"primary");
+      ctx.showToast(`${displayPatientFor(target, ctx).name} already checked in — Token #${target.tokenNumber}`,"primary");
     }
   };
 
@@ -2993,7 +3007,7 @@ function DoctorQueue({ ctx, doctor }){
               <Card key={a.id} style={{display:"flex",alignItems:"center",gap:12, borderColor: a.tokenNumber===currentToken?COLORS.primary:COLORS.border, borderWidth: a.tokenNumber===currentToken?2:1}}>
                 <div style={{width:38,height:38,borderRadius:10,background: a.status==="completed"?COLORS.successSoft: a.tokenNumber===currentToken?COLORS.primary:COLORS.primarySoft,color: a.status==="completed"?COLORS.success: a.tokenNumber===currentToken?"#fff":COLORS.primary,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,flexShrink:0}}>{a.tokenNumber}</div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:13.5}}>{a.patientName}</div>
+                  <div style={{fontWeight:700,fontSize:13.5}}>{displayPatientFor(a, ctx).name}</div>
                   <div style={{fontSize:11.5,color:COLORS.muted}}>{fmtTime12(a.time)} · {a.type}</div>
                 </div>
                 <Badge tone={STATUS_TONE(a.status)}>{a.status}</Badge>
@@ -3012,7 +3026,8 @@ function DoctorPatients({ ctx, doctor }){
   const mine = ctx.appointments.filter(a=>a.doctorId===doctor.id);
   const byPatient = {};
   mine.forEach(a=>{
-    if (!byPatient[a.patientId]) byPatient[a.patientId] = { id:a.patientId, name:a.patientName, phone:a.patientPhone, visits:0, lastDate:a.date, completed:0 };
+    const disp = displayPatientFor(a, ctx);
+    if (!byPatient[a.patientId]) byPatient[a.patientId] = { id:a.patientId, name:disp.name, phone:disp.phone, photo:disp.photo, visits:0, lastDate:a.date, completed:0 };
     byPatient[a.patientId].visits++;
     if (a.status==="completed") byPatient[a.patientId].completed++;
     if (a.date>byPatient[a.patientId].lastDate) byPatient[a.patientId].lastDate = a.date;
@@ -3034,7 +3049,7 @@ function DoctorPatients({ ctx, doctor }){
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {list.map(p => (
               <Card key={p.id} style={{display:"flex",gap:12,alignItems:"center"}}>
-                <Avatar name={p.name} size={42} />
+                <Avatar src={p.photo} name={p.name} size={42} />
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:13.5}}>{p.name}</div>
                   <div style={{fontSize:11.5,color:COLORS.muted}}>{p.phone} · Last visit {fmtDateLabel(p.lastDate)}</div>
@@ -3633,7 +3648,7 @@ function AdminAppointments({ ctx }){
                 <Card key={a.id}>
                   <div style={{display:"flex",justifyContent:"space-between"}}>
                     <div>
-                      <div style={{fontWeight:700,fontSize:13}}>{a.patientName} <span style={{color:COLORS.muted,fontWeight:500}}>→</span> {doc?.name}</div>
+                      <div style={{fontWeight:700,fontSize:13}}>{displayPatientFor(a, ctx).name} <span style={{color:COLORS.muted,fontWeight:500}}>→</span> {doc?.name}</div>
                       <div style={{fontSize:11.5,color:COLORS.muted}}>{fmtDateLabel(a.date)} · {fmtTime12(a.time)} · Token #{a.tokenNumber}</div>
                     </div>
                     <Badge tone={STATUS_TONE(a.status)}>{a.status}</Badge>
@@ -3713,7 +3728,7 @@ function AdminPatients({ ctx }){
             const visits = ctx.appointments.filter(a=>a.patientId===p.id).length;
             return (
               <Card key={p.id} style={{display:"flex",gap:12,alignItems:"center"}}>
-                <Avatar name={p.name} size={42} />
+                <Avatar src={p.photo} name={p.name} size={42} />
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:13.5}}>{p.name}</div>
                   <div style={{fontSize:11.5,color:COLORS.muted}}>{p.phone}</div>
