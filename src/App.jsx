@@ -324,7 +324,7 @@ function mapRealDoctorRow(row){
     name: row.profiles?.full_name || "Doctor",
     specialization: row.specialty || "General Physician",
     qualification: row.qualification || "", experience: row.experience || 0, regNo: "",
-    photo: row.profiles?.avatar_url || `https://i.pravatar.cc/300?u=${row.profile_id}`,
+    photo: row.profiles?.avatar_url || "",
     clinicName: row.clinic_name || "", address: row.clinic_address || "", area: row.area || "", city: CITY,
     fee: row.fee || 0, rating: 0, reviewCount: 0, about: row.about || "",
     startTime: row.start_time || "09:00", endTime: row.end_time || "17:00",
