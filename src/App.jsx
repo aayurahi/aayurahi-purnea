@@ -894,8 +894,14 @@ export default function App(){
   // actually booked with them, and an admin sees everyone. Demo/preview
   // patients (used to fill out the admin demo experience) are kept separate.
   const refreshRealPatients = async () => {
-    const { data: rows } = await supabase.from("patients").select("*, profiles(full_name, avatar_url)");
-    const realMapped = (rows || []).map(mapRealPatientRow);
+    const { data: rows } = await supabase.from("patients").select("*");
+    const ids = (rows || []).map(r => r.id);
+    const { data: profs } = ids.length
+      ? await supabase.from("profiles").select("id, full_name, avatar_url").in("id", ids)
+      : { data: [] };
+    const profileById = {};
+    (profs || []).forEach(p => { profileById[p.id] = p; });
+    const realMapped = (rows || []).map(row => mapRealPatientRow({ ...row, profiles: profileById[row.id] }));
     setPatients(prev => [...prev.filter(p => p.isDemo), ...realMapped]);
   };
 
