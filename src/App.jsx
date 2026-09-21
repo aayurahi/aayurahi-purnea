@@ -5,6 +5,7 @@ import LegalPage from "./Legal";
 import EmergencyInfoPage from "./EmergencyInfo";
 import SymptomGuideModal from "./SymptomGuide";
 import { PatientHealthCard, QRScannerModal, parseHealthCardValue } from "./HealthCard";
+import { AvatarViewerModal, PhotoCropModal } from "./PhotoCrop";
 import { requestNotificationPermission, listenForForegroundMessages } from "./firebaseMessaging";
 import {
   Search, MapPin, Star, Clock, Calendar, User, Bell, Home as HomeIcon, Users,
@@ -2557,6 +2558,8 @@ function PatientProfile({ ctx, patient, onOpenDoctor, onOpenFamily }){
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(patient);
   const [showHealthCard, setShowHealthCard] = useState(false);
+  const [viewingPhoto, setViewingPhoto] = useState(false);
+  const [cropFile, setCropFile] = useState(null);
   const favDoctors = ctx.doctors.filter(d=>patient.favorites?.includes(d.id));
   const mine = ctx.appointments.filter(a=>a.patientId===patient.id);
   const completed = mine.filter(a=>a.status==="completed").length;
@@ -2583,13 +2586,15 @@ function PatientProfile({ ctx, patient, onOpenDoctor, onOpenFamily }){
       <TopBar title="Profile" right={<button className="mq-btn" onClick={()=>ctx.logout()} style={{background:"none",color:COLORS.danger,display:"flex",alignItems:"center",gap:5,fontSize:12.5,fontWeight:700}}><LogOut size={15}/>Logout</button>} />
       <div style={{padding:16}}>
         <Card style={{textAlign:"center",marginBottom:16}}>
-          <label style={{display:"inline-block",position:"relative",cursor:"pointer"}}>
-            <Avatar src={patient.photo} name={patient.name} size={68} />
-            <div style={{position:"absolute",bottom:0,right:0,width:24,height:24,borderRadius:"50%",background:COLORS.primary,display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid #fff"}}>
+          <div style={{display:"inline-block",position:"relative"}}>
+            <button onClick={()=>setViewingPhoto(true)} style={{background:"none",border:"none",padding:0,cursor:"pointer",display:"block"}}>
+              <Avatar src={patient.photo} name={patient.name} size={68} />
+            </button>
+            <label style={{position:"absolute",bottom:0,right:0,width:24,height:24,borderRadius:"50%",background:COLORS.primary,display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid #fff",cursor:"pointer"}}>
               <Camera size={13} color="#fff" />
-            </div>
-            <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{ const f=e.target.files?.[0]; if(f) ctx.uploadAvatar(f); }} />
-          </label>
+              <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{ const f=e.target.files?.[0]; if(f) setCropFile(f); e.target.value=""; }} />
+            </label>
+          </div>
           <div style={{fontWeight:800,fontSize:16,marginTop:10}}>{patient.name}</div>
           <div style={{fontSize:12.5,color:COLORS.muted}}>{patient.phone}</div>
           <div style={{display:"flex",justifyContent:"center",gap:20,marginTop:14}}>
@@ -2674,6 +2679,20 @@ function PatientProfile({ ctx, patient, onOpenDoctor, onOpenFamily }){
         )}
       </div>
       {showHealthCard && <PatientHealthCard patient={patient} onBack={()=>setShowHealthCard(false)} />}
+      {viewingPhoto && (
+        <AvatarViewerModal
+          src={patient.photo} name={patient.name}
+          onClose={()=>setViewingPhoto(false)}
+          onFileSelected={(f)=>{ setViewingPhoto(false); setCropFile(f); }}
+        />
+      )}
+      {cropFile && (
+        <PhotoCropModal
+          file={cropFile}
+          onCancel={()=>setCropFile(null)}
+          onSave={(f)=>{ setCropFile(null); ctx.uploadAvatar(f); }}
+        />
+      )}
     </div>
   );
 }
@@ -3133,6 +3152,8 @@ function DoctorProfileSettings({ ctx, doctor }){
   useEffect(()=>setForm(doctor), [doctor.id]);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const [newBlockDate, setNewBlockDate] = useState("");
+  const [viewingPhoto, setViewingPhoto] = useState(false);
+  const [cropFile, setCropFile] = useState(null);
   const [editingClinic, setEditingClinic] = useState(null); // null=closed, {}=new, {...row}=editing
   const [clinicSaving, setClinicSaving] = useState(false);
 
@@ -3222,13 +3243,15 @@ function DoctorProfileSettings({ ctx, doctor }){
         {tab==="profile" && (
           <div>
             <Card style={{textAlign:"center",marginBottom:16}}>
-              <label style={{display:"inline-block",position:"relative",cursor:"pointer"}}>
-                <Avatar src={doctor.photo} name={doctor.name} size={72} />
-                <div style={{position:"absolute",bottom:0,right:0,width:26,height:26,borderRadius:"50%",background:COLORS.primary,display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid #fff"}}>
+              <div style={{display:"inline-block",position:"relative"}}>
+                <button onClick={()=>setViewingPhoto(true)} style={{background:"none",border:"none",padding:0,cursor:"pointer",display:"block"}}>
+                  <Avatar src={doctor.photo} name={doctor.name} size={72} />
+                </button>
+                <label style={{position:"absolute",bottom:0,right:0,width:26,height:26,borderRadius:"50%",background:COLORS.primary,display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid #fff",cursor:"pointer"}}>
                   <Camera size={14} color="#fff" />
-                </div>
-                <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{ const f=e.target.files?.[0]; if(f) ctx.uploadAvatar(f); }} />
-              </label>
+                  <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{ const f=e.target.files?.[0]; if(f) setCropFile(f); e.target.value=""; }} />
+                </label>
+              </div>
               <div style={{fontWeight:800,fontSize:16,marginTop:10}}>{doctor.name}</div>
               <Badge tone="success">Verified Doctor</Badge>
             </Card>
@@ -3412,6 +3435,20 @@ function DoctorProfileSettings({ ctx, doctor }){
           </div>
         )}
       </Modal>
+      {viewingPhoto && (
+        <AvatarViewerModal
+          src={doctor.photo} name={doctor.name}
+          onClose={()=>setViewingPhoto(false)}
+          onFileSelected={(f)=>{ setViewingPhoto(false); setCropFile(f); }}
+        />
+      )}
+      {cropFile && (
+        <PhotoCropModal
+          file={cropFile}
+          onCancel={()=>setCropFile(null)}
+          onSave={(f)=>{ setCropFile(null); ctx.uploadAvatar(f); }}
+        />
+      )}
     </div>
   );
 }
