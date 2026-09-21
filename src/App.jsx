@@ -4166,9 +4166,10 @@ function ChatConversation({ ctx, chatId, onBack }){
   if (!chat) return <LoadingState />;
 
   const isPatientSide = ctx.session.id === chat.patient_id;
-  const otherName = isPatientSide
-    ? (ctx.doctors.find(d=>d.id===chat.doctor_id)?.name || "Doctor")
-    : (ctx.patients.find(p=>p.id===chat.patient_id)?.name || "Patient");
+  const otherDoc = isPatientSide ? ctx.doctors.find(d=>d.id===chat.doctor_id) : null;
+  const otherPat = !isPatientSide ? ctx.patients.find(p=>p.id===chat.patient_id) : null;
+  const otherName = isPatientSide ? (otherDoc?.name || "Doctor") : (otherPat?.name || "Patient");
+  const otherPhoto = isPatientSide ? otherDoc?.photo : otherPat?.photo;
   const expired = new Date(chat.expires_at) < new Date();
   const canSend = chat.status==="accepted" && !expired;
 
@@ -4197,7 +4198,10 @@ function ChatConversation({ ctx, chatId, onBack }){
 
   return (
     <div className="mq-fade-in" style={{display:"flex",flexDirection:"column",height:"100vh"}}>
-      <TopBar title={otherName} onBack={onBack} />
+      <TopBar
+        title={<div style={{display:"flex",alignItems:"center",gap:10}}><TappableAvatar src={otherPhoto} name={otherName} size={32} /><span>{otherName}</span></div>}
+        onBack={onBack}
+      />
       {chat.status==="pending" && <div style={{padding:"10px 16px",background:COLORS.warnSoft,color:COLORS.warning,fontSize:12.5,fontWeight:600}}>{t("waitingForDoctor",ctx.language)}</div>}
       {chat.status==="declined" && <div style={{padding:"10px 16px",background:COLORS.dangerSoft,color:COLORS.danger,fontSize:12.5,fontWeight:600}}>{t("chatDeclinedMsg",ctx.language)}</div>}
       {chat.status==="accepted" && expired && <div style={{padding:"10px 16px",background:COLORS.border,color:COLORS.muted,fontSize:12.5,fontWeight:600}}>{t("chatEndedMsg",ctx.language)}</div>}
