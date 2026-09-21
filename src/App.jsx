@@ -5,7 +5,7 @@ import LegalPage from "./Legal";
 import EmergencyInfoPage from "./EmergencyInfo";
 import SymptomGuideModal from "./SymptomGuide";
 import { PatientHealthCard, QRScannerModal, parseHealthCardValue } from "./HealthCard";
-import { AvatarViewerModal, PhotoCropModal } from "./PhotoCrop";
+import { AvatarViewerModal, PhotoCropModal, TappableAvatar } from "./PhotoCrop";
 import { requestNotificationPermission, listenForForegroundMessages } from "./firebaseMessaging";
 import {
   Search, MapPin, Star, Clock, Calendar, User, Bell, Home as HomeIcon, Users,
@@ -1677,7 +1677,7 @@ function DoctorProfileView({ ctx, doctor, patient, onBack, onBook }){
       } />
       <div style={{padding:16}}>
         <Card style={{display:"flex",gap:14,marginBottom:14}}>
-          <Avatar src={doctor.photo} name={doctor.name} size={78} />
+          <TappableAvatar src={doctor.photo} name={doctor.name} size={78} />
           <div style={{flex:1}}>
             <div style={{fontWeight:800,fontSize:17}}>{doctor.name}</div>
             <div style={{color:COLORS.primary,fontWeight:700,fontSize:13}}>{translateSpecialty(doctor.specialization,ctx.language)}</div>
@@ -2138,7 +2138,7 @@ function PatientAppointments({ ctx, patient, onOpen, onBookAgain }){
               return (
                 <Card key={a.id} hover onClick={()=>onOpen(a)}>
                   <div style={{display:"flex",gap:10}}>
-                    <Avatar src={doc.photo} name={doc.name} size={48} />
+                    <TappableAvatar src={doc.photo} name={doc.name} size={48} />
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                         <div style={{fontWeight:800,fontSize:13.5}}>{doc.name}</div>
@@ -2220,7 +2220,7 @@ function AppointmentDetail({ ctx, appt, patient, onBack }){
         )}
 
         <Card style={{marginBottom:14,display:"flex",gap:12}}>
-          <Avatar src={doc?.photo} name={doc?.name} size={56} />
+          <TappableAvatar src={doc?.photo} name={doc?.name} size={56} />
           <div style={{flex:1}}>
             <div style={{fontWeight:800,fontSize:15}}>{doc?.name}</div>
             <div style={{fontSize:12,color:COLORS.primary,fontWeight:700}}>{translateSpecialty(doc?.specialization,ctx.language)}</div>
@@ -2799,7 +2799,7 @@ function DoctorDashboard({ ctx, doctor, goTab }){
       <TopBar title="Dashboard" right={<button className="mq-btn" onClick={()=>ctx.logout()} style={{background:"none",color:COLORS.danger}}><LogOut size={17}/></button>} />
       <div style={{padding:16}}>
         <Card style={{display:"flex",gap:12,marginBottom:16,alignItems:"center"}}>
-          <Avatar src={doctor.photo} name={doctor.name} size={54} />
+          <TappableAvatar src={doctor.photo} name={doctor.name} size={54} />
           <div style={{flex:1}}>
             <div style={{fontWeight:800,fontSize:15}}>{doctor.name}</div>
             <div style={{fontSize:12,color:COLORS.primary,fontWeight:700}}>{doctor.specialization}</div>
@@ -3128,7 +3128,7 @@ function DoctorPatients({ ctx, doctor }){
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {list.map(p => (
               <Card key={p.id} style={{display:"flex",gap:12,alignItems:"center"}}>
-                <Avatar src={p.photo} name={p.name} size={42} />
+                <TappableAvatar src={p.photo} name={p.name} size={42} />
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:13.5}}>{p.name}</div>
                   <div style={{fontSize:11.5,color:COLORS.muted}}>{p.phone} · Last visit {fmtDateLabel(p.lastDate)}</div>
@@ -3674,7 +3674,7 @@ function AdminDoctors({ ctx }){
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {list.map(d=>(
               <Card key={d.id} hover onClick={()=>setSelected(d)} style={{display:"flex",gap:12,alignItems:"center"}}>
-                <Avatar src={d.photo} name={d.name} size={46} />
+                <TappableAvatar src={d.photo} name={d.name} size={46} />
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:13.5}}>{d.name}</div>
                   <div style={{fontSize:11.5,color:COLORS.muted}}>{d.specialization} · {d.area}</div>
@@ -3691,7 +3691,7 @@ function AdminDoctors({ ctx }){
         {selected && (
           <div>
             <div style={{display:"flex",gap:12,marginBottom:14}}>
-              <Avatar src={selected.photo} name={selected.name} size={60} />
+              <TappableAvatar src={selected.photo} name={selected.name} size={60} />
               <div>
                 <div style={{fontWeight:800,fontSize:15}}>{selected.name}</div>
                 <div style={{fontSize:12.5,color:COLORS.primary,fontWeight:700}}>{selected.specialization}</div>
@@ -3864,7 +3864,7 @@ function AdminPatients({ ctx }){
             const visits = ctx.appointments.filter(a=>a.patientId===p.id).length;
             return (
               <Card key={p.id} style={{display:"flex",gap:12,alignItems:"center"}}>
-                <Avatar src={p.photo} name={p.name} size={42} />
+                <TappableAvatar src={p.photo} name={p.name} size={42} />
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:13.5}}>{p.name}</div>
                   <div style={{fontSize:11.5,color:COLORS.muted}}>{p.phone}</div>
@@ -4010,7 +4010,7 @@ function PatientMessages({ ctx, patient, onOpenChat }){
               if (!doc) return null;
               return (
                 <Card key={appt.id} style={{display:"flex",gap:10,alignItems:"center"}}>
-                  <Avatar src={doc.photo} name={doc.name} size={40} />
+                  <TappableAvatar src={doc.photo} name={doc.name} size={40} />
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:700,fontSize:13.5}}>{doc.name}</div>
                     <div style={{fontSize:11.5,color:COLORS.muted}}>{translateSpecialty(doc.specialization,ctx.language)}</div>
@@ -4033,7 +4033,7 @@ function PatientMessages({ ctx, patient, onOpenChat }){
               const expired = new Date(c.expires_at) < new Date();
               return (
                 <Card key={c.id} hover onClick={()=>onOpenChat(c.id)} style={{display:"flex",gap:10,alignItems:"center"}}>
-                  <Avatar src={doc?.photo} name={doc?.name||"Doctor"} size={40} />
+                  <TappableAvatar src={doc?.photo} name={doc?.name||"Doctor"} size={40} />
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:700,fontSize:13.5}}>{doc?.name || t("doctorWord",ctx.language)}</div>
                     <div style={{fontSize:11.5,color:COLORS.muted}}>{translateSpecialty(doc?.specialization,ctx.language)}</div>
@@ -4084,7 +4084,7 @@ function DoctorMessages({ ctx, doctor, onOpenChat }){
               const pat = ctx.patients.find(p=>p.id===c.patient_id);
               return (
                 <Card key={c.id} style={{display:"flex",gap:10,alignItems:"center"}}>
-                  <Avatar src={pat?.photo} name={pat?.name||"Patient"} size={40} />
+                  <TappableAvatar src={pat?.photo} name={pat?.name||"Patient"} size={40} />
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:700,fontSize:13.5}}>{pat?.name || "Patient"}</div>
                     <div style={{fontSize:11.5,color:COLORS.muted}}>Wants to chat with you</div>
@@ -4108,7 +4108,7 @@ function DoctorMessages({ ctx, doctor, onOpenChat }){
               const expired = new Date(c.expires_at) < new Date();
               return (
                 <Card key={c.id} hover onClick={()=>onOpenChat(c.id)} style={{display:"flex",gap:10,alignItems:"center"}}>
-                  <Avatar src={pat?.photo} name={pat?.name||"Patient"} size={40} />
+                  <TappableAvatar src={pat?.photo} name={pat?.name||"Patient"} size={40} />
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:700,fontSize:13.5}}>{pat?.name || "Patient"}</div>
                   </div>

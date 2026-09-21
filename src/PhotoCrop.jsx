@@ -2,6 +2,28 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { X, Camera, Circle, Square, Loader2 } from "lucide-react";
 import { COLORS, Avatar } from "./App";
 
+// Drop-in replacement for <Avatar .../> that opens a full-screen view of
+// the photo on tap — for viewing anyone's photo (a doctor's, a patient's),
+// not just your own. Pass allowChange + onFileSelected only for your own
+// photo, to also show a "Change Photo" button in the viewer.
+export function TappableAvatar({ src, name, size, allowChange = false, onFileSelected }){
+  const [viewing, setViewing] = useState(false);
+  return (
+    <>
+      <button onClick={(e)=>{ e.stopPropagation(); setViewing(true); }} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "inline-flex", borderRadius: "50%", flexShrink: 0 }}>
+        <Avatar src={src} name={name} size={size} />
+      </button>
+      {viewing && (
+        <AvatarViewerModal
+          src={src} name={name}
+          onClose={()=>setViewing(false)}
+          onFileSelected={allowChange ? (f)=>{ setViewing(false); onFileSelected?.(f); } : undefined}
+        />
+      )}
+    </>
+  );
+}
+
 /* ============================================================================
    PROFILE PHOTO: VIEW + CROP
    - AvatarViewerModal: tapping your own photo opens a full-screen view of
@@ -33,16 +55,20 @@ export function AvatarViewerModal({ src, name, onClose, onFileSelected }){
         )}
       </div>
       <div style={{ padding: "20px 20px 44px", display: "flex", justifyContent: "center" }}>
-        <button
-          onClick={() => fileRef.current?.click()}
-          style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 14, padding: "12px 26px", display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}
-        >
-          <Camera size={16} /> Change Photo
-        </button>
-        <input
-          ref={fileRef} type="file" accept="image/*" style={{ display: "none" }}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) onFileSelected(f); e.target.value = ""; }}
-        />
+        {onFileSelected && (
+          <>
+            <button
+              onClick={() => fileRef.current?.click()}
+              style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 14, padding: "12px 26px", display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}
+            >
+              <Camera size={16} /> Change Photo
+            </button>
+            <input
+              ref={fileRef} type="file" accept="image/*" style={{ display: "none" }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) onFileSelected(f); e.target.value = ""; }}
+            />
+          </>
+        )}
       </div>
     </div>
   );
