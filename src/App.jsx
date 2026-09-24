@@ -882,11 +882,17 @@ export default function App(){
   // sees only their own listing, and an admin sees everyone — including pending
   // applications). Demo/preview doctors are kept separate and untouched.
   const refreshRealDoctors = async () => {
-    const { data: rows } = await supabase.from("doctors").select("*, profiles(full_name, avatar_url)");
+    const { data: rows } = await supabase.from("doctors").select("*");
+    const doctorIds = (rows || []).map(r => r.profile_id);
+    const { data: profs } = doctorIds.length
+      ? await supabase.from("profiles").select("id, full_name, avatar_url").in("id", doctorIds)
+      : { data: [] };
+    const profileById = {};
+    (profs || []).forEach(p => { profileById[p.id] = p; });
     const { data: clinicRows } = await supabase.from("doctor_clinics").select("*").order("created_at", { ascending: true });
     const clinicsByDoctor = {};
     (clinicRows || []).forEach(c => { (clinicsByDoctor[c.doctor_id] ||= []).push(mapRealClinicRow(c)); });
-    const realMapped = (rows || []).map(row => ({ ...mapRealDoctorRow(row), extraClinics: clinicsByDoctor[row.profile_id] || [] }));
+    const realMapped = (rows || []).map(row => ({ ...mapRealDoctorRow({ ...row, profiles: profileById[row.profile_id] }), extraClinics: clinicsByDoctor[row.profile_id] || [] }));
     setDoctors(prev => [...prev.filter(d => d.isDemo), ...realMapped]);
   };
 
@@ -998,15 +1004,22 @@ export default function App(){
   // appointments — also writes the same change to Supabase, so it's a genuine
   // shared booking rather than only living in this browser.
   const syncAppt = async (apptId, patch) => {
+    const previous = appointments.find(a=>a.id===apptId);
     updateAppointments(prev => prev.map(a => a.id===apptId ? {...a, ...patch} : a));
-    const target = appointments.find(a=>a.id===apptId);
+    const target = previous;
     if (target && !target.isDemo) {
       const dbPatch = {};
       if ('status' in patch) dbPatch.status = patch.status;
       if ('date' in patch) dbPatch.appt_date = patch.date;
       if ('time' in patch) dbPatch.appt_time = patch.time;
       if ('rescheduled' in patch) dbPatch.rescheduled = patch.rescheduled;
-      try { await supabase.from("appointments").update(dbPatch).eq("id", apptId); } catch(e){ /* local change stands; will retry next sync */ }
+      const { error } = await supabase.from("appointments").update(dbPatch).eq("id", apptId);
+      if (error) {
+        // The optimistic local change never actually saved — revert it and
+        // say so, rather than let it silently look like it worked.
+        updateAppointments(prev => prev.map(a => a.id===apptId ? previous : a));
+        showToast("Could not save that change — please try again","danger");
+      }
     }
   };
 
@@ -1018,7 +1031,8 @@ export default function App(){
   const setLanguage = async (lang) => {
     setLanguageState(lang);
     if (session) {
-      try { await supabase.from("profiles").update({ language: lang }).eq("id", session.id); } catch(e){}
+      const { error } = await supabase.from("profiles").update({ language: lang }).eq("id", session.id);
+      if (error) showToast("Could not save language preference","danger");
     }
   };
 
@@ -2062,7 +2076,8 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack, initialClinicId }){
                   <button
                     onClick={async (e)=>{
                       e.stopPropagation();
-                      await supabase.from("family_members").delete().eq("id", m.id);
+                      const { error } = await supabase.from("family_members").delete().eq("id", m.id);
+                      if (error) { ctx.showToast("Could not remove family member","danger"); return; }
                       setFamilyMembers(prev => prev.filter(x=>x.id!==m.id));
                       if (selectedFamilyId===m.id) chooseWhoFor(null);
                     }}
@@ -2437,7 +2452,8 @@ function FamilyMembersScreen({ ctx, patient, onBack }){
   useEffect(()=>{ load(); }, []);
 
   const remove = async (id) => {
-    await supabase.from("family_members").delete().eq("id", id);
+    const { error } = await supabase.from("family_members").delete().eq("id", id);
+    if (error) { ctx.showToast("Could not remove family member","danger"); return; }
     ctx.showToast(t("familyMemberRemoved",ctx.language));
     load();
   };
@@ -3171,9 +3187,11 @@ function DoctorProfileSettings({ ctx, doctor }){
         slot_duration: editingClinic.slotDuration || 20, working_days: editingClinic.workingDays || [1,2,3,4,5,6],
       };
       if (editingClinic.id && editingClinic.id !== "primary") {
-        await supabase.from("doctor_clinics").update(payload).eq("id", editingClinic.id);
+        const { error } = await supabase.from("doctor_clinics").update(payload).eq("id", editingClinic.id);
+        if (error) throw error;
       } else {
-        await supabase.from("doctor_clinics").insert(payload);
+        const { error } = await supabase.from("doctor_clinics").insert(payload);
+        if (error) throw error;
       }
       await ctx.refreshRealDoctors();
       ctx.showToast("Clinic saved");
@@ -3186,7 +3204,8 @@ function DoctorProfileSettings({ ctx, doctor }){
   };
   const deleteClinic = async (id) => {
     try {
-      await supabase.from("doctor_clinics").delete().eq("id", id);
+      const { error } = await supabase.from("doctor_clinics").delete().eq("id", id);
+      if (error) throw error;
       await ctx.refreshRealDoctors();
       ctx.showToast("Clinic removed");
     } catch (e) {
@@ -3636,10 +3655,14 @@ function AdminDoctors({ ctx }){
     // Also flip the real "verified" flag in Supabase for real (non-demo) doctor applications.
     // Harmlessly affects 0 rows for the sample/demo doctors, since they have no real database row.
     if (!doc.isDemo) {
-      try {
-        await supabase.from("doctors").update({ verified: status === "approved" }).eq("profile_id", doc.id);
-        await ctx.refreshRealDoctors();
-      } catch (e) { /* ignore */ }
+      const { error } = await supabase.from("doctors").update({ verified: status === "approved" }).eq("profile_id", doc.id);
+      if (error) {
+        ctx.updateDoctors(prev => prev.map(d=>d.id===doc.id?{...d,status:doc.status}:d));
+        ctx.showToast(`Could not ${status==="approved"?"approve":"reject"} ${doc.name} — please try again`,"danger");
+        setSelected(null);
+        return;
+      }
+      await ctx.refreshRealDoctors();
     }
     ctx.showToast(`${doc.name} ${status}`);
     setSelected(null);
@@ -4063,7 +4086,8 @@ function DoctorMessages({ ctx, doctor, onOpenChat }){
   useEffect(()=>{ load(); }, []);
 
   const respond = async (chatId, status) => {
-    await supabase.from("chats").update({ status }).eq("id", chatId);
+    const { error } = await supabase.from("chats").update({ status }).eq("id", chatId);
+    if (error) { ctx.showToast("Could not update chat request","danger"); return; }
     ctx.showToast(status==="accepted" ? "Chat request accepted" : "Chat request declined");
     load();
   };
@@ -4177,7 +4201,7 @@ function ChatConversation({ ctx, chatId, onBack }){
     if (!text.trim()) return;
     setSending(true);
     const { error } = await supabase.from("messages").insert({ chat_id: chatId, sender_id: ctx.session.id, text: text.trim() });
-    if (!error) setText("");
+    if (!error) setText(""); else ctx.showToast("Could not send message — please try again","danger");
     setSending(false);
   };
 
@@ -4188,7 +4212,8 @@ function ChatConversation({ ctx, chatId, onBack }){
       const path = `${chatId}/${uid("img")}.${ext}`;
       const { error: eUp } = await supabase.storage.from("chat-images").upload(path, file);
       if (eUp) throw eUp;
-      await supabase.from("messages").insert({ chat_id: chatId, sender_id: ctx.session.id, image_path: path });
+      const { error: eMsg } = await supabase.from("messages").insert({ chat_id: chatId, sender_id: ctx.session.id, image_path: path });
+      if (eMsg) throw eMsg;
     } catch (e) {
       ctx.showToast("Could not send image","danger");
     } finally {
