@@ -328,6 +328,7 @@ function mapRealDoctorRow(row){
     photo: row.profiles?.avatar_url || "",
     clinicName: row.clinic_name || "", address: row.clinic_address || "", area: row.area || "", city: CITY,
     fee: row.fee || 0, rating: 0, reviewCount: 0, about: row.about || "",
+    followupEnabled: !!row.followup_enabled, followupDays: row.followup_days || 7, followupFee: row.followup_fee || 0,
     startTime: row.start_time || "09:00", endTime: row.end_time || "17:00",
     breakStart: row.break_start || "13:00", breakEnd: row.break_end || "13:45",
     slotDuration: row.slot_duration || 20, workingDays: row.working_days || [1,2,3,4,5,6],
@@ -1806,6 +1807,11 @@ function DoctorProfileView({ ctx, doctor, patient, onBack, onBook }){
         <div style={{flex:1}}>
           <div style={{fontSize:11,color:COLORS.muted,fontWeight:600}}>{nextInfo.label}</div>
           <div style={{fontWeight:800,fontSize:16,display:"flex",alignItems:"center"}}><IndianRupee size={14}/>{doctor.fee}</div>
+          {doctor.followupEnabled && (
+            <div style={{fontSize:10.5,color:COLORS.primary,fontWeight:700,marginTop:1}}>
+              Follow-up within {doctor.followupDays}d: ₹{doctor.followupFee}
+            </div>
+          )}
         </div>
         {doctor.whatsappNumber && (
           <button
@@ -1888,6 +1894,24 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack, initialClinicId }){
   const dates = selectedClinic ? next14Days().filter(d => selectedClinic.workingDays.includes(dayOfWeek(d)) && !selectedClinic.blockedDates?.includes(d)) : [];
   const slots = date && selectedClinic ? getSlotsForDate(selectedClinic, date, ctx.appointments, doctor.id) : [];
 
+  // Follow-up visit policy: if this doctor offers one, and the same person
+  // (self, or the specific family member selected) has a completed visit
+  // with this doctor within the set window before the chosen date, the
+  // follow-up fee applies instead of the regular one.
+  const followupInfo = (() => {
+    if (!doctor.followupEnabled || !date) return null;
+    const priorVisits = ctx.appointments.filter(a =>
+      a.doctorId===doctor.id && a.patientId===patient.id && a.status==="completed" &&
+      (a.familyMemberId||null) === (selectedFamilyId||null)
+    );
+    if (!priorVisits.length) return null;
+    const mostRecent = priorVisits.reduce((latest,a)=> (!latest || a.date>latest.date) ? a : latest, null);
+    const daysSince = Math.round((new Date(date) - new Date(mostRecent.date)) / 86400000);
+    if (daysSince >= 0 && daysSince <= doctor.followupDays) return { lastVisitDate: mostRecent.date, daysSince };
+    return null;
+  })();
+  const effectiveFee = followupInfo ? doctor.followupFee : doctor.fee;
+
   const set = (k,v)=>setForm(f=>({...f,[k]:v}));
 
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -1900,7 +1924,7 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack, initialClinicId }){
     const clinicId = selectedClinic.isPrimary ? null : selectedClinic.id;
     const base = {
       doctorId: doctor.id, patientId: patient.id, date, time, type,
-      status:"pending", tokenNumber, fee: doctor.fee, reason: form.reason || "General consultation",
+      status:"pending", tokenNumber, fee: effectiveFee, reason: form.reason || "General consultation",
       patientName: form.name, patientPhone: form.phone, patientAge: form.age, patientGender: form.gender,
       clinicId, clinicName: selectedClinic.clinicName, clinicAddress: selectedClinic.address,
       familyMemberId: selectedFamilyId,
@@ -1922,7 +1946,7 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack, initialClinicId }){
     try {
       const { data, error } = await supabase.from("appointments").insert({
         patient_id: patient.id, doctor_id: doctor.id, appt_date: date, appt_time: time,
-        consult_type: type, status: "pending", token_number: tokenNumber, fee: doctor.fee,
+        consult_type: type, status: "pending", token_number: tokenNumber, fee: effectiveFee,
         reason: base.reason, patient_name: form.name, patient_phone: form.phone,
         patient_age: form.age, patient_gender: form.gender, family_member_id: selectedFamilyId,
         clinic_id: clinicId, clinic_name: selectedClinic.clinicName, clinic_address: selectedClinic.address,
@@ -2105,7 +2129,12 @@ function BookingFlow({ ctx, doctor, patient, onDone, onBack, initialClinicId }){
               <Row icon={Calendar} label={t("date",ctx.language)} value={fmtDateLabel(date)} />
               <Row icon={Clock} label={t("time",ctx.language)} value={fmtTime12(time)} />
               <Row icon={type==="Video Consult"?Video:Building2} label={t("type",ctx.language)} value={type} />
-              <Row icon={IndianRupee} label={t("consultationFee",ctx.language)} value={`₹${doctor.fee}`} />
+              <Row icon={IndianRupee} label={t("consultationFee",ctx.language)} value={followupInfo ? `₹${effectiveFee} (was ₹${doctor.fee})` : `₹${effectiveFee}`} />
+              {followupInfo && (
+                <div style={{marginTop:8, background:COLORS.primarySoft, borderRadius:10, padding:"8px 10px", fontSize:11.5, color:COLORS.primary, fontWeight:700}}>
+                  Follow-up rate applied — last visit was {fmtDateLabel(followupInfo.lastVisitDate)} ({followupInfo.daysSince} day{followupInfo.daysSince===1?"":"s"} ago)
+                </div>
+              )}
             </Card>
             <Btn full size="lg" icon={CheckCircle2} onClick={confirmBooking} disabled={bookingLoading}>{bookingLoading ? "Booking..." : t("confirmBooking",ctx.language)}</Btn>
 
@@ -3225,6 +3254,7 @@ function DoctorProfileSettings({ ctx, doctor }){
         working_days: form.workingDays, blocked_dates: form.blockedDates, consult_types: form.consultTypes,
         clinic_lat: form.clinicLat || null, clinic_lng: form.clinicLng || null,
         whatsapp_number: form.whatsappNumber || null,
+        followup_enabled: !!form.followupEnabled, followup_days: form.followupDays || 7, followup_fee: form.followupFee || 0,
       }).eq("profile_id", doctor.id);
       if (dErr) throw dErr;
       if (form.name !== doctor.name) {
@@ -3355,6 +3385,29 @@ function DoctorProfileSettings({ ctx, doctor }){
               </div>
             </Field>
             <Field label="Consultation fee (₹)"><TextInput type="number" value={form.fee} onChange={e=>set("fee",Number(e.target.value))} /></Field>
+
+            <Field label="Follow-up visit policy" hint="Offer a free or discounted visit if the same patient (or family member) returns within a set number of days of their last completed visit with you.">
+              <button
+                onClick={()=>set("followupEnabled", !form.followupEnabled)}
+                style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",background:form.followupEnabled?COLORS.primarySoft:"#F1F5F9",border:`1.5px solid ${form.followupEnabled?COLORS.primary:COLORS.border}`,borderRadius:12,padding:"10px 14px",cursor:"pointer"}}
+              >
+                <span style={{fontWeight:700,fontSize:13}}>{form.followupEnabled ? "Enabled" : "Disabled"}</span>
+                <div style={{width:38,height:22,borderRadius:12,background:form.followupEnabled?COLORS.primary:COLORS.border,position:"relative",transition:"background 0.15s"}}>
+                  <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:form.followupEnabled?19:3,transition:"left 0.15s"}} />
+                </div>
+              </button>
+            </Field>
+            {form.followupEnabled && (
+              <div style={{display:"flex",gap:10}}>
+                <Field label="Within (days)" style={{flex:1}}>
+                  <TextInput type="number" min={1} value={form.followupDays} onChange={e=>set("followupDays",Number(e.target.value))} />
+                </Field>
+                <Field label="Follow-up fee (₹)" style={{flex:1}} hint="Use 0 for a free follow-up">
+                  <TextInput type="number" min={0} value={form.followupFee} onChange={e=>set("followupFee",Number(e.target.value))} />
+                </Field>
+              </div>
+            )}
+
             <Btn full size="lg" onClick={save}>Save Changes</Btn>
           </div>
         )}
