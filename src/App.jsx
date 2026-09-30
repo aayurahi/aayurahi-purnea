@@ -329,6 +329,7 @@ function mapRealDoctorRow(row){
     clinicName: row.clinic_name || "", address: row.clinic_address || "", area: row.area || "", city: CITY,
     fee: row.fee || 0, rating: 0, reviewCount: 0, about: row.about || "",
     followupEnabled: !!row.followup_enabled, followupDays: row.followup_days || 7, followupFee: row.followup_fee || 0,
+    acceptsOnlinePayment: !!row.accepts_online_payment,
     startTime: row.start_time || "09:00", endTime: row.end_time || "17:00",
     breakStart: row.break_start || "13:00", breakEnd: row.break_end || "13:45",
     slotDuration: row.slot_duration || 20, workingDays: row.working_days || [1,2,3,4,5,6],
@@ -3255,6 +3256,7 @@ function DoctorProfileSettings({ ctx, doctor }){
         clinic_lat: form.clinicLat || null, clinic_lng: form.clinicLng || null,
         whatsapp_number: form.whatsappNumber || null,
         followup_enabled: !!form.followupEnabled, followup_days: form.followupDays || 7, followup_fee: form.followupFee || 0,
+        accepts_online_payment: !!form.acceptsOnlinePayment,
       }).eq("profile_id", doctor.id);
       if (dErr) throw dErr;
       if (form.name !== doctor.name) {
@@ -3407,6 +3409,18 @@ function DoctorProfileSettings({ ctx, doctor }){
                 </Field>
               </div>
             )}
+
+            <Field label="Online payments" hint="Let patients pay through the app with Razorpay when booking, instead of only at the clinic. You can turn this off any time.">
+              <button
+                onClick={()=>set("acceptsOnlinePayment", !form.acceptsOnlinePayment)}
+                style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",background:form.acceptsOnlinePayment?COLORS.primarySoft:"#F1F5F9",border:`1.5px solid ${form.acceptsOnlinePayment?COLORS.primary:COLORS.border}`,borderRadius:12,padding:"10px 14px",cursor:"pointer"}}
+              >
+                <span style={{fontWeight:700,fontSize:13}}>{form.acceptsOnlinePayment ? "Accepting online payments" : "Pay at clinic only"}</span>
+                <div style={{width:38,height:22,borderRadius:12,background:form.acceptsOnlinePayment?COLORS.primary:COLORS.border,position:"relative",transition:"background 0.15s"}}>
+                  <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:form.acceptsOnlinePayment?19:3,transition:"left 0.15s"}} />
+                </div>
+              </button>
+            </Field>
 
             <Btn full size="lg" onClick={save}>Save Changes</Btn>
           </div>
